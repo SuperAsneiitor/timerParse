@@ -1,79 +1,132 @@
-# APR Timing 报告解析 (timerExtract)
+# timerExtract
 
-解析 APR 工具生成的 Timing 报告（如 `place_REG2REG.rpt`），提取每条 Timing path 的 start/end、launch path 与 capture path 上各 point 的指标（默认 Fanout、Cap、Trans），并输出为 CSV。指标名可配置，便于后续扩展新列。
+解析多种 Timing 报告格式，提取每条 path 的 launch/capture 路径点及 path 级汇总，输出 CSV；支持 PrimeTime 报告生成与 path summary 对比。
 
-## 输入
+**仓库中不包含测试数据与测试结果**：`input/` 目录及各类 `output*/` 输出目录已通过 `.gitignore` 排除，上传 GitHub 时不会包含。
 
-- 报告路径（默认）：`input/place_REG2REG.rpt`
-- 报告结构：每条 path 从 `Startpoint:` 开始，到 `slack (VIOLATED/MET)` 结束；中间包含 Point 表（Fanout、Cap、Trans、Location、Incr、Path 等列）
+---
 
-## 输出
+## 功能概览
 
-- `output/launch_path.csv`：launch（发射）路径上所有 point，含 path_id、startpoint、endpoint、时钟、slack、point_index、point 及配置的指标列（默认 fanout、cap、trans）
-- `output/capture_path.csv`：capture（捕获）路径，列同上
+| 脚本 | 作用 |
+|------|------|
+| `scripts/parse_timing_rpt.py` | 解析 Timing 报告 → `launch_path.csv`、`capture_path.csv`、`path_summary.csv` |
+| `scripts/gen_pt_report_timing.py` | 根据 launch_path CSV 生成 PrimeTime `report_timing` TCL |
+| `scripts/compare_path_summary.py` | 对比两个 path_summary CSV（golden vs test），输出比值结果 |
 
-## 用法
+---
+
+## 支持的报告格式
+
+| 格式 | 说明 | 识别方式 |
+|------|------|----------|
+| **apr** | APR 工具报告，Point 表含 Location、Incr、Path | `Startpoint:` + `slack (VIOLATED/MET)`，表头含 Location |
+| **pt** | PrimeTime 风格，Point 表含 Derate、Incr、Path（无 Location） | `Report : timing` + `Derate` + `Startpoint:` |
+| **format2** | Path Start/Path End + Type–Description 表，含 x-coord/y-coord、Derate | `Path Start` / `Path End` + `slack (VIOLATED/MET)` |
+
+使用 `--format auto` 时会按文件内容自动选择格式。
+
+---
+
+## 解析规则（按 point 类型）
+
+除各格式规定的「前 N 行」保留全部属性外，其余 point 按类型只保留部分列：
+
+- **format1 (APR)**：前 2 行全量；**input_pin / output_pin** → Cap, Trans, Location, Incr, Path；**net** → Fanout。
+- **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Incr, Path；**net** → Fanout, Cap。
+- **format2**：前 4 行全量；**input_pin** → D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description；**output_pin** → Trans, Derate, x-coord, y-coord, Delay, Time, Description；**net** → Fanout, Cap。
+
+Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 output_pin，否则为 input_pin（format2 还使用 Type 列）。
+
+---
+
+## 1. 解析 Timing 报告
+
+### 输出文件
+
+- **launch_path.csv** / **capture_path.csv**：每条 path 的 launch/capture 路径上各 point 一行，列含 path_id、startpoint、endpoint、时钟、slack、point_index、point 及该格式的属性列（如 Fanout, Cap, Trans, Incr, Path 等）。
+- **path_summary.csv**：每条 path 一行，列为 `path_id, startpoint, endpoint, arrival_time, required_time, slack`（不含 trans/cap）。
+
+### 用法
 
 ```bash
-# 使用默认路径（项目下 input/place_REG2REG.rpt，输出到 output/）
-python scripts/parse_timing_rpt.py
+# 指定输入报告与输出目录（格式自动检测）
+python scripts/parse_timing_rpt.py path/to/report.rpt -o path/to/output
 
-# 指定输入与输出目录
-python scripts/parse_timing_rpt.py path/to/place_REG2REG.rpt -o path/to/output
+# 指定格式
+python scripts/parse_timing_rpt.py report.rpt -o output --format apr   # apr | pt | format2 | auto
 
-# 大文件多进程解析（4 个 worker）
-python scripts/parse_timing_rpt.py input/place_REG2REG.rpt -o output -j 4
+# 多进程（path 数 ≥100 时生效）
+python scripts/parse_timing_rpt.py report.rpt -o output -j 4
 
-# 指定指标列名（可扩展）
-python scripts/parse_timing_rpt.py input/place_REG2REG.rpt -o output --metrics Fanout Cap Trans
+# 自定义 Point 表指标列名（与报告表头一致）
+python scripts/parse_timing_rpt.py report.rpt -o output --metrics Fanout Cap Trans
 ```
 
-## 参数
+### 参数
 
 | 参数 | 说明 |
 |------|------|
-| `input_rpt` | 可选，Timing 报告文件路径，默认 `input/place_REG2REG.rpt` |
-| `-o`, `--output-dir` | 输出目录，默认 `output` |
-| `-j`, `--jobs` | 并行 worker 数，默认 1；path 数 &lt; 100 时自动改为 1 |
-| `--metrics` | Point 表指标列名，默认 Fanout Cap Trans；可扩展。运行时会打印：Point metrics: Fanout, Cap, Trans |
+| `input_rpt` | Timing 报告文件路径 |
+| `-o`, `--output` | 输出目录，默认 `output` |
+| `--format` | `apr` / `pt` / `format2` / `auto`（默认） |
+| `-j`, `--jobs` | 并行 worker 数；path 数 &lt; 100 时自动为 1 |
+| `--metrics` | Point 表指标列名，默认 Fanout Cap Trans |
 
-## 生成 PrimeTime report_timing 脚本
+---
 
-在解析得到 `launch_path.csv` 后，可用 `gen_pt_report_timing.py` 生成 PT 的 `report_timing` TCL。运行时会打印 CSV 中的指标列名（如 fanout, cap, trans）。
+## 2. 生成 PrimeTime report_timing
 
-- **输入 pin**（如 A1, A2, CK, D, I）→ `-rise_through`
-- **输出 pin**（如 Q, Z, ZN）→ `-fall_through`
-- 网络 `(net)`、虚拟点（如 clock、data arrival time）不写入 through 列表
+根据 `launch_path.csv` 生成 PT 的 `report_timing` TCL：input pin 用 `-rise_through`/`-fall_through`，output pin（Q/Z/ZN）用 `-fall_through`，net 与虚拟点不写入。
 
 ```bash
-# 默认：从 output/launch_path.csv 生成 output/report_timing.tcl
+# 默认：output/launch_path.csv → output/report_timing.tcl
 python scripts/gen_pt_report_timing.py
 
-# 指定输入 CSV 与输出 TCL
+# 指定 CSV 与输出 TCL
 python scripts/gen_pt_report_timing.py output/launch_path.csv -o output/report_timing.tcl
 
-# 只生成前 N 条 path（便于调试）
+# 只生成前 N 条 path
 python scripts/gen_pt_report_timing.py -n 10
 
-# 单行输出（不换行）
-python scripts/gen_pt_report_timing.py --no-wrap
+# 单行输出、附加参数
+python scripts/gen_pt_report_timing.py --no-wrap -extra "delay_type max"
 ```
 
-# 额外参数
-python scripts/gen_pt_report_timing.py -extra "delay_type max"
+---
 
-生成示例（每条 path 一条 `report_timing`，默认带换行）：
+## 3. 对比 path_summary
 
-```tcl
-# path_id 1
-report_timing -from {startpoint/inst/Q} -to {endpoint/inst/D} \
-  -rise_through {inst1/A2 (AND2...)} \
-  -fall_through {inst1/Z (AND2...)} \
-  ...
+对比两个 path_summary CSV（golden vs test），按相同 `path_id` 计算 **arrival_time、required_time、slack** 的比值：`(test - golden) / golden`。
+
+```bash
+# 输出：完整版 compare_result.csv + 简化版 compare_result_simple.csv（仅 path_id 与三列 ratio）
+python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary.csv -o output/compare_result.csv
 ```
+
+- **完整版**：path_id, startpoint, endpoint, 各指标的 golden/test/ratio。
+- **简化版**：path_id, arrival_time_ratio, required_time_ratio, slack_ratio（文件名自动加 `_simple`）。
+
+---
 
 ## 依赖
 
-- Python 3.6+
+- Python 3.6+  
+- 无第三方库
 
-无需额外第三方库。
+---
+
+## 上传 GitHub 说明
+
+- 测试数据和测试结果**不上传**：`input/` 目录及所有解析/对比输出目录已加入 `.gitignore`。
+- 仓库中仅保留脚本、README 与配置文件；克隆后需自行准备 Timing 报告并指定 `-o` 输出目录运行。
+
+**推送步骤示例**（在项目根目录执行）：
+
+```bash
+git remote add origin https://github.com/<你的用户名>/timerExtract.git   # 仅首次
+git add .
+git status   # 确认无 input/、output/、output_* 被加入
+git commit -m "Initial commit: timing report parser, PT generator, path summary compare"
+git push -u origin main
+```
