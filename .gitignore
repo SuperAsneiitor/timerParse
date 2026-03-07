@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.so
+
+# 生成的大文件（可删除此行以纳入 output）
+output/*.csv
+output/*.tcl
+
+# 可选：若不想把报告文件纳入仓库可取消下一行注释
+# input/
