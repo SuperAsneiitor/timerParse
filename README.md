@@ -8,9 +8,11 @@
 
 ## 功能概览
 
-| 脚本 | 作用 |
+| 模块/脚本 | 作用 |
 |------|------|
-| `scripts/parse_timing_rpt.py` | 解析 Timing 报告 → `launch_path.csv`、`capture_path.csv`、`path_summary.csv` |
+| `lib/` | **重构后的解析库**：`TimeParser` 抽象类 + `format1/format2/pt` 三个子类 + CLI |
+| `python -m lib` | 使用新架构解析 Timing 报告并输出 CSV |
+| `scripts/parse_timing_rpt.py` | 旧入口（兼容保留） |
 | `scripts/gen_pt_report_timing.py` | 根据 launch_path CSV 生成 PrimeTime `report_timing` TCL |
 | `scripts/compare_path_summary.py` | 对比两个 path_summary CSV（golden vs test），输出比值结果 |
 
@@ -40,7 +42,45 @@ Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 
 
 ---
 
-## 1. 解析 Timing 报告
+## 1. 重构后推荐用法（lib）
+
+### 架构说明
+
+- `lib/time_parser_base.py`：`TimeParser` 抽象基类（模板方法）。
+- `lib/format1_parser.py`：`Format1Parser`，解析 APR/format1。
+- `lib/format2_parser.py`：`Format2Parser`，解析 Path Start/Path End 风格。
+- `lib/pt_parser.py`：`PtParser`，解析 PT 风格。
+- `lib/cli.py` + `lib/__main__.py`：命令行入口，支持 `python -m lib`。
+
+### CLI 用法（推荐）
+
+```bash
+# 自动识别格式并解析
+python -m lib path/to/report.rpt -o path/to/output
+
+# 显式指定格式
+python -m lib path/to/report.rpt --format format1 -o output
+python -m lib path/to/report.rpt --format format2 -o output
+python -m lib path/to/report.rpt --format pt -o output
+```
+
+### CLI 参数
+
+| 参数 | 说明 |
+|------|------|
+| `input_rpt` | Timing 报告文件路径 |
+| `-o`, `--output-dir` | 输出目录，默认 `output_lib` |
+| `--format` | `auto` / `format1` / `format2` / `pt` / `apr`（默认 `auto`） |
+
+### 输出文件
+
+- `launch_path.csv`
+- `capture_path.csv`
+- `path_summary.csv`（列为 `path_id,startpoint,endpoint,arrival_time,required_time,slack`）
+
+---
+
+## 2. 旧脚本用法（兼容保留）
 
 ### 输出文件
 
@@ -75,7 +115,7 @@ python scripts/parse_timing_rpt.py report.rpt -o output --metrics Fanout Cap Tra
 
 ---
 
-## 2. 生成 PrimeTime report_timing
+## 3. 生成 PrimeTime report_timing
 
 根据 `launch_path.csv` 生成 PT 的 `report_timing` TCL：input pin 用 `-rise_through`/`-fall_through`，output pin（Q/Z/ZN）用 `-fall_through`，net 与虚拟点不写入。
 
@@ -95,7 +135,7 @@ python scripts/gen_pt_report_timing.py --no-wrap -extra "delay_type max"
 
 ---
 
-## 3. 对比 path_summary
+## 4. 对比 path_summary
 
 对比两个 path_summary CSV（golden vs test），按相同 `path_id` 计算 **arrival_time、required_time、slack** 的比值：`(test - golden) / golden`。
 
@@ -121,12 +161,13 @@ python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary
 - 测试数据和测试结果**不上传**：`input/` 目录及所有解析/对比输出目录已加入 `.gitignore`。
 - 仓库中仅保留脚本、README 与配置文件；克隆后需自行准备 Timing 报告并指定 `-o` 输出目录运行。
 
-**推送步骤示例**（在项目根目录执行）：
+**推送步骤示例（建议新建分支，不直接推 master/main）**：
 
 ```bash
 git remote add origin https://github.com/<你的用户名>/timerExtract.git   # 仅首次
+git checkout -b feature/lib-parser-cli
 git add .
 git status   # 确认无 input/、output/、output_* 被加入
-git commit -m "Initial commit: timing report parser, PT generator, path summary compare"
-git push -u origin main
+git commit -m "docs: clarify refactored lib usage and CLI"
+git push -u origin feature/lib-parser-cli
 ```
