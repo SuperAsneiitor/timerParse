@@ -1,5 +1,74 @@
 # Release Notes
 
+## [0.4.1] - 2026-03-10
+
+### 更新时间
+
+- **日期**：2026-03-10
+
+### 更新原因与概要
+
+- 调整 `compare_path_summary` 的 ratio 输出格式：从小数改为百分比字符串（带 `%`），使结果更直观。
+
+### 变更
+
+- `arrival_time_ratio` / `required_time_ratio` / `slack_ratio` 统一改为百分比输出（例如 `10.000000%`）。
+- 统计/相关性/图表流程已兼容百分比输入解析。
+- 阈值默认值从 `0.1` 调整为 `10`（即 10%），与百分比单位保持一致。
+- HTML 报告中的统计与阈值字段改为带 `%` 展示，和 CSV ratio 单位一致。
+
+### 文档与测试
+
+- `README.md` 同步更新公式、阈值说明与示例参数。
+- `tests/test_compare_path_summary.py` 增加百分比格式断言并更新阈值测试。
+
+---
+
+## [0.4.0] - 2026-03-10
+
+### 更新时间
+
+- **日期**：2026-03-10
+
+### 更新原因与概要
+
+- 增强 `scripts/compare_path_summary.py`：在原有对比 CSV 基础上，新增统计输出、图表输出与 HTML 汇总报告，便于快速评估 golden/test 差异分布与相关性。
+
+### 新增
+
+- **统计输出**：
+  - 默认输出 `compare_stats.json`（结构化）。
+  - 可选输出 `compare_stats.csv`（扁平化，需指定 `--stats-csv`）。
+  - 覆盖指标：`arrival_time_ratio` / `required_time_ratio` / `slack_ratio` 的 `count/min/max/mean/median/std`、`p90/p95/p99`、阈值超限统计（`abs(ratio) > threshold`）与相关性（Pearson）。
+- **图表输出（matplotlib）**：
+  - 直方图 3 张（每个 ratio 一张）
+  - 箱线图 1 张（3 个 ratio 同图）
+  - 散点图 3 张（两两组合）
+  - 默认输出目录：`<output_dir>/charts`，支持 `--charts-dir` 自定义。
+- **HTML 汇总报告**：
+  - 输出 `compare_report.html`
+  - 包含输入文件信息、样本数、统计摘要、阈值摘要、相关性摘要与图表展示。
+- **CLI 参数扩展**：
+  - `--threshold`、`--bins`、`--charts-dir`
+  - `--no-charts`、`--no-html`
+  - `--stats-json`、`--stats-csv`
+- **依赖策略**：
+  - 若缺少 `matplotlib`，脚本尝试自动安装后继续执行；安装失败时跳过图表生成并保留统计输出。
+
+### 测试
+
+- 新增 `tests/test_compare_path_summary.py`，覆盖：
+  - 统计计算（分位数、阈值、相关性）
+  - 默认/自定义 CLI 参数组合
+  - 统计文件输出、HTML 报告生成
+  - 图表文件存在性检查（matplotlib 可用时执行）
+
+### 文档
+
+- `README.md` 更新 `compare_path_summary.py` 的新参数、输出说明与命令示例。
+
+---
+
 ## [0.3.1] - 2026-03-10
 
 ### 更新时间

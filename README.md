@@ -170,22 +170,67 @@ python scripts/gen_pt_report_timing.py --no-wrap -extra "delay_type max"
 
 ## 4. 对比 path_summary
 
-对比两个 path_summary CSV（golden vs test），按相同 `path_id` 计算 **arrival_time、required_time、slack** 的比值：`(test - golden) / golden`。
+对比两个 path_summary CSV（golden vs test），按相同 `path_id` 计算 **arrival_time、required_time、slack** 的百分比差值：`(test - golden) / golden * 100%`。
+
+### 基础用法
 
 ```bash
-# 输出：完整版 compare_result.csv + 简化版 compare_result_simple.csv（仅 path_id 与三列 ratio）
+# 输出：完整版 compare_result.csv + 简化版 compare_result_simple.csv + compare_stats.json + compare_report.html + charts/
 python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary.csv -o output/compare_result.csv
 ```
 
-- **完整版**：path_id, startpoint, endpoint, 各指标的 golden/test/ratio。
-- **简化版**：path_id, arrival_time_ratio, required_time_ratio, slack_ratio（文件名自动加 `_simple`）。
+### 常用参数
+
+| 参数 | 说明 |
+|------|------|
+| `-o`, `--output` | 完整版对比 CSV 输出路径（默认 `<golden_dir>/compare_result.csv`） |
+| `--threshold` | 阈值统计条件 `abs(ratio_percent) > threshold`，默认 `10`（即 10%） |
+| `--bins` | 直方图桶数，默认 `50` |
+| `--charts-dir` | 图表目录，默认 `<output_dir>/charts` |
+| `--no-charts` | 禁用图表输出 |
+| `--no-html` | 禁用 HTML 报告输出 |
+| `--stats-json` | 统计 JSON 输出路径（默认 `<output_dir>/compare_stats.json`） |
+| `--stats-csv` | 可选统计 CSV 输出路径（默认不输出） |
+
+### 输出说明
+
+- `compare_result.csv`：完整版（path_id、startpoint/endpoint、各指标 golden/test/ratio）。
+- `compare_result_simple.csv`：简化版（仅 `path_id` + 三列 ratio）。
+- `compare_stats.json`：结构化统计结果，包含：
+  - 基础统计：`count/min/max/mean/median/std`
+  - 分位数：`p90/p95/p99`
+  - 阈值统计：`abs(ratio_percent) > threshold` 的 `count/ratio`
+  - 相关性：`arrival-required`、`arrival-slack`、`required-slack` 的 Pearson 相关系数
+- `compare_stats.csv`：可选扁平化统计表（仅当指定 `--stats-csv`）。
+- `charts/`：图表目录（默认）：
+  - 直方图 3 张：`hist_arrival_time_ratio.png` / `hist_required_time_ratio.png` / `hist_slack_ratio.png`
+  - 箱线图 1 张：`boxplot_ratios.png`
+  - 散点图 3 张：三组两两组合
+- `compare_report.html`：HTML 汇总报告（输入信息、样本数、统计摘要、阈值摘要、相关性摘要、图表）；统计与阈值单元按百分比（`%`）展示。
+
+### 示例
+
+```bash
+# 自定义阈值、桶数、图表目录，并额外输出 stats CSV
+python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary.csv \
+  -o output/compare_result.csv \
+  --threshold 5 \
+  --bins 80 \
+  --charts-dir output/charts_custom \
+  --stats-csv output/compare_stats.csv
+
+# 仅输出 CSV + stats（不生成图表与 HTML）
+python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary.csv \
+  -o output/compare_result.csv \
+  --no-charts --no-html
+```
 
 ---
 
 ## 依赖
 
 - Python 3.6+  
-- 无第三方库
+- 可选：`matplotlib`（用于 compare_path_summary 图表；脚本会尝试自动安装）
 
 ---
 
