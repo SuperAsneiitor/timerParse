@@ -1,5 +1,29 @@
 # Release Notes
 
+## [0.2.2] - 2026-03-10
+
+### 更新时间
+
+- **日期**：2026-03-10
+
+### 更新原因与概要
+
+- 修复 format1(APR) 在部分报告中 **capture 段 clock 行不带 rise/fall edge**（如 `clock CORE_CLK`）导致 capture path 无法识别的问题。
+
+### 修复
+
+- **format1**：clock 段起始识别支持 `clock <clock_name>`（不带 edge）与 `clock <clock_name> (rise|fall edge)` 两种形式，并避免将 `clock network delay (propagated)` 等描述行误识别为段起点。
+
+### 新增
+
+- **测试**：`tests/test_format1_parser.py` 新增 capture clock 无 edge 的用例。
+
+### 文档
+
+- **README**：更新 format1 兼容说明，说明 edge 可选与 `clock network delay` 过滤规则。
+
+---
+
 ## [0.2.1] - 2026-03-09
 
 ### 更新时间

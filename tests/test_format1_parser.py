@@ -33,6 +33,27 @@ sta.timing_check_type: setup
 """
 
 
+FORMAT1_CAPTURE_CLOCK_NO_EDGE = r"""
+sta.timing_check_type: setup
+  Startpoint: SP/Q (falling edge-triggered flip-flop clocked by CORECLK)
+  Endpoint: EP/D (rising edge-triggered flip-flop clocked by CORECLK)
+  Scenario: demo
+
+  Point                                                                                                                                                                    Fanout  Cap         Trans       Location           Incr        Path
+  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  clock LAUNCH_CLK (rise edge)                                                                                                                                                                                                   0.000       0.000
+  U0/A (BUF)                                                                                                                                                                      1       0.001       0.010       (1.0, 2.0)        0.100       0.100 r
+  data arrival time                                                                                                                                                                                                                       0.575
+
+  clock CAPTURE_CLK                                                                                                                                                                                                                          0.000       0.000
+  clock network delay (propagated)                                                                                                                                                                                            0.000       0.000
+  U1/Z (BUF)                                                                                                                                                                      1       0.001       0.010       (3.0, 4.0)        0.200       0.775 r
+  library setup time                                                                                                                                                                                                         -0.019      -0.019
+  data required time                                                                                                                                                                                                                      0.800
+  slack (MET)                                                                                                                                                                                                                             0.225
+"""
+
+
 class TestFormat1ClockRegex(unittest.TestCase):
     def setUp(self) -> None:
         self.parser = Format1Parser()
@@ -105,6 +126,15 @@ class TestFormat1ClockRegex(unittest.TestCase):
         out = self._parse_text(rpt)
         self.assertEqual(out.summary_rows[0]["startpoint_clock"], "MIXEDCLK")
         self.assertEqual(out.summary_rows[0]["endpoint_clock"], "MIXEDCLK")
+
+    def test_capture_clock_line_without_edge(self):
+        """capture 段起始的 clock 行可能没有 (rise|fall edge)，仍应能识别为 capture 起点。"""
+        out = self._parse_text(FORMAT1_CAPTURE_CLOCK_NO_EDGE)
+        self.assertGreater(len(out.capture_rows), 0)
+        # capture 第一行应为 "clock CAPTURE_CLK" 而不是 "clock network delay ..."
+        self.assertIn("clock", out.capture_rows[0]["point"])
+        self.assertIn("CAPTURE_CLK", out.capture_rows[0]["point"])
+        self.assertNotIn("network delay", out.capture_rows[0]["point"])
 
 
 if __name__ == "__main__":
