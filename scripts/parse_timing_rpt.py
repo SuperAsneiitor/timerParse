@@ -60,9 +60,15 @@ FORMAT1_ATTRS_BY_TYPE: dict[str, list[str]] = {
 FORMAT2_ATTRS_ORDER = ["Type", "Fanout", "Cap", "D-Trans", "Trans", "Derate", "x-coord", "y-coord", "D-Delay", "Delay", "Time", "Description"]
 FORMAT2_SKIP_FIRST_ROWS = 4
 FORMAT2_ATTRS_BY_TYPE: dict[str, list[str]] = {
-    "net": ["Fanout", "Cap"],
+    "net": ["Fanout", "Cap", "Description"],
     "input_pin": ["D-Trans", "Trans", "Derate", "x-coord", "y-coord", "D-Delay", "Delay", "Time", "Description"],
     "output_pin": ["Trans", "Derate", "x-coord", "y-coord", "Delay", "Time", "Description"],
+    "clock": ["Delay", "Time", "Description"],
+    "port": ["Delay", "Time", "Description"],
+    "constraint": ["Delay", "Time", "Description"],
+    "required": ["Time", "Description"],
+    "arrival": ["Time", "Description"],
+    "slack": ["Time", "Description"],
     "other": [],  # 由解析逻辑回退到 attrs_order 全量
 }
 
@@ -88,10 +94,13 @@ def _point_type_format1(point_name: str) -> str:
 
 
 def _point_type_format2(type_col: str, point_name: str) -> str:
-    """Format2: Type 列 + Description 中 pin 名判断 net / input_pin / output_pin。"""
-    if type_col and type_col.strip().lower() == "net":
+    """Format2: Type 列 + Description 中 pin 名判断 point 类型。"""
+    t = type_col.strip().lower() if type_col else ""
+    if t == "net":
         return "net"
-    if type_col and type_col.strip().lower() == "pin":
+    if t in ("clock", "port", "constraint", "required", "arrival", "slack"):
+        return t
+    if t == "pin":
         m = re.search(r"/([A-Za-z0-9_\[\]]+)\s*\(?[A-Z]?", point_name)
         pin = m.group(1) if m else None
         if pin and pin in OUTPUT_PIN_NAMES:
@@ -144,7 +153,10 @@ RE_F2_PATH_START = re.compile(r"^\s*Path Start\s+:\s+(.+?)\s+\(\s*flip-flop[^)]*
 RE_F2_PATH_END = re.compile(r"^\s*Path End\s+:\s+(.+?)\s+\(\s*flip-flop[^)]*,\s*(\w+)\s*\)\s*$")
 RE_F2_SLACK_VALUE = re.compile(r"(-?\d+\.\d+)\s+slack\s+\(")
 RE_F2_SLACK_LINE = re.compile(r"slack\s+\((\w+)\)")
-RE_F2_SEP = re.compile(r"^-=+\s*$")
+# 兼容 format2 中两种分隔线：
+# 1) "-----...."
+# 2) "-=-=-=...."
+RE_F2_SEP = re.compile(r"^\s*[-=]{20,}\s*$")
 RE_F2_DATA_ARRIVAL = re.compile(r"data arrival time")
 
 
@@ -208,17 +220,36 @@ def _parse_point_line_format2(
     ordered = sorted([n for n in attrs_order if n in col_pos], key=lambda n: col_pos[n])
     if not ordered:
         return {}
+    head_type_m = re.match(r"^\s*([A-Za-z]+)\b", s)
+    head_type = head_type_m.group(1) if head_type_m else ""
+    # format2 新版报告的行内间距不稳定，不能完全依赖 Description 列宽切分。
+    # 这里按“行尾结构”优先提取 point，避免 point 名被截断。
     desc_start = col_pos["Description"]
-    point_raw = s[desc_start:].strip()
-    if re.search(r"\s+/\s+", point_raw):
-        point_raw = re.split(r"\s+/\s+", point_raw, maxsplit=1)[-1].strip()
-    elif re.search(r"\s+\\\s+", point_raw):
-        point_raw = re.split(r"\s+\\\s+", point_raw, maxsplit=1)[-1].strip()
+
+    point = ""
+    # pin/port 行常见 "... / xxx" 或 "... \ xxx"
+    sm = re.search(r"\s+[\\/]\s+(.+)$", s)
+    if sm:
+        point = sm.group(1).strip()
+    elif re.match(r"^\s*net\b", s, re.IGNORECASE):
+        # net 行：取行尾最后一个非空 token 作为 net 名
+        nm = re.search(r"\s+([A-Za-z0-9_/\[\].-]+)\s*$", s)
+        point = nm.group(1).strip() if nm else ""
+    elif "data arrival time" in s:
+        point = "data arrival time"
+    elif "data required time" in s:
+        point = "data required time"
     else:
-        point_raw = re.sub(r"^[\s\d.-]+", "", point_raw).strip()
-    point = point_raw.lstrip("/ \\").strip() if point_raw else ""
+        # 兜底：取最后一个浮点数之后的文本（适合 clock/constraint 等行）
+        nums = list(re.finditer(r"-?\d+\.\d+", s))
+        if nums:
+            tail = s[nums[-1].end():].strip()
+            point = tail.lstrip("/ \\").strip()
+        if not point and desc_start < len(s):
+            point = s[desc_start:].strip().lstrip("/ \\").strip()
+
     result: dict[str, Any] = {"point": point, "Description": point}
-    type_val = ""
+    type_val = head_type
     for i, name in enumerate(ordered):
         start = col_pos[name]
         end = col_pos[ordered[i + 1]] if i + 1 < len(ordered) else len(s)
@@ -229,6 +260,16 @@ def _parse_point_line_format2(
             continue
         if val == "-" or val == "-0.000":
             val = ""
+        if name == "Fanout":
+            # 兼容 "2" / "2 xxx"：仅保留数字部分
+            fm = re.search(r"\d+", val)
+            result[name] = fm.group(0) if fm else val
+            continue
+        if name == "Cap":
+            # 兼容 "0.006 xd"：仅保留首个浮点数
+            cm = re.search(r"-?\d+\.\d+", val)
+            result[name] = cm.group(0) if cm else val
+            continue
         if name == "Derate":
             dm = re.search(r"(\d+\.\d+\s*,\s*\d+\.\d+)", s)
             result[name] = dm.group(1).replace(" ", "") if dm else val
@@ -236,6 +277,16 @@ def _parse_point_line_format2(
         if name in ("x-coord", "y-coord"):
             continue
         result[name] = val
+
+    if "Type" in attrs_order and not result.get("Type"):
+        result["Type"] = type_val
+
+    # net 行优先用正则提取 Fanout/Cap，避免列对齐波动造成错位
+    if (type_val or "").lower() == "net":
+        netm = re.match(r"^\s*net\s+(\d+)\s+([0-9]*\.?[0-9]+)", s, re.IGNORECASE)
+        if netm:
+            result["Fanout"] = netm.group(1)
+            result["Cap"] = netm.group(2)
     brace = re.search(r"\{\s*([-\d.]+\s+[-\d.]+)\s*\}", s)
     if brace:
         parts = brace.group(1).split()
@@ -256,20 +307,46 @@ def _parse_point_line_format2(
     else:
         result["x-coord"] = ""
         result["y-coord"] = ""
+        # 无坐标类型行：采用行尾浮点 + 描述提取
+        t = (type_val or "").lower()
+        # clock/port/constraint: Delay, Time, Description
+        if t in ("clock", "port", "constraint"):
+            nums = list(re.finditer(r"-?\d+\.\d+", s))
+            if len(nums) >= 2:
+                delay_v = nums[-2].group(0)
+                time_v = nums[-1].group(0)
+                desc_tail = s[nums[-1].end():].strip().lstrip("/ \\").strip()
+                result["Delay"] = delay_v
+                result["Time"] = time_v
+                if desc_tail:
+                    result["Description"] = desc_tail
+                    result["point"] = desc_tail
+        # required/arrival/slack: Time, Description
+        elif t in ("required", "arrival", "slack"):
+            nums = list(re.finditer(r"-?\d+\.\d+", s))
+            if len(nums) >= 1:
+                time_v = nums[-1].group(0)
+                desc_tail = s[nums[-1].end():].strip().lstrip("/ \\").strip()
+                result["Time"] = time_v
+                if desc_tail:
+                    result["Description"] = desc_tail
+                    result["point"] = desc_tail
     for a in attrs_order:
         if a not in result and a != "Description":
             result[a] = ""
-    if segment_row_index >= skip_first_n:
-        ptype = _point_type_format2(type_val, point)
+    ptype = _point_type_format2(type_val, point)
+    # net 类型无条件按 net 规则过滤，避免在“前 N 行保留全属性”时误带出 Time/Delay 等字段
+    force_filter = ptype == "net"
+    if force_filter or segment_row_index >= skip_first_n:
         allowed = point_type_attrs.get(ptype) or attrs_order
         for a in attrs_order:
-            if a != "Description" and a not in allowed:
+            if a not in ("Description", "Type") and a not in allowed:
                 result[a] = ""
     return result
 
 
 def parse_one_path_format2(path_id: int, path_text: str, metric_names: list[str]) -> tuple[dict[str, Any], list[dict], list[dict]]:
-    """Format2: 解析 Path Start/Path End/slack，Type-Fanout-Cap-Description 表，launch 到 data arrival time，capture 到 -=-=- 前。"""
+    """Format2: 解析 Path Start/Path End/slack，launch 到首个 data arrival，capture 继续到 slack 行。"""
     lines = path_text.splitlines()
     meta: dict[str, Any] = {
         "path_id": path_id,
@@ -325,8 +402,6 @@ def parse_one_path_format2(path_id: int, path_text: str, metric_names: list[str]
     in_capture = False
     for j in range(table_start, len(lines)):
         if RE_F2_SEP.match(lines[j]):
-            if in_capture:
-                break
             continue
         seg_idx = len(launch_rows) if in_launch else len(capture_rows)
         row = _parse_point_line_format2(
@@ -334,14 +409,13 @@ def parse_one_path_format2(path_id: int, path_text: str, metric_names: list[str]
         )
         if not row or not row.get("point"):
             continue
-        if RE_F2_DATA_ARRIVAL.search(lines[j]):
-            if in_launch and launch_rows:
+        if in_launch and RE_F2_DATA_ARRIVAL.search(lines[j]):
+            if launch_rows:
                 meta["trans"] = launch_rows[-1].get("Trans", "")
                 meta["cap"] = launch_rows[-1].get("Cap", "")
-            if in_launch:
-                vm = re.search(r"(-?\d+\.\d+)\s+data arrival time", lines[j])
-                if vm:
-                    meta["arrival_time"] = vm.group(1).strip()
+            vm = re.search(r"(-?\d+\.\d+)\s+data arrival time", lines[j])
+            if vm:
+                meta["arrival_time"] = vm.group(1).strip()
             launch_rows.append({
                 "path_id": path_id,
                 "startpoint": meta["startpoint"],
@@ -383,6 +457,9 @@ def parse_one_path_format2(path_id: int, path_text: str, metric_names: list[str]
                 "point": row["point"],
                 **{a: row.get(a, "") for a in attrs_order},
             })
+            # capture 内遇到 slack 行即完成该 path 解析
+            if str(row.get("Type", "")).lower() == "slack":
+                break
 
     for line in lines:
         if "data required time" in line:

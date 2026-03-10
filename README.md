@@ -36,9 +36,18 @@
 
 - **format1 (APR)**：前 2 行全量；**input_pin / output_pin** → Cap, Trans, Location, Incr, Path；**net** → Fanout。
 - **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Incr, Path；**net** → Fanout, Cap。
-- **format2**：前 4 行全量；**input_pin** → D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description；**output_pin** → Trans, Derate, x-coord, y-coord, Delay, Time, Description；**net** → Fanout, Cap。
+- **format2**：前 4 行全量；类型由 Type 列判断，各类型保留属性如下：
+  - **input_pin**：D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description（Time 与 Description 间可有 `/` 或 `\`）。
+  - **output_pin**：Trans, Derate, x-coord, y-coord, Delay, Time, Description。
+  - **net**：Fanout, Cap, Description（Cap 后可能跟 `xd`）。
+  - **clock**：Delay, Time, Description。
+  - **port**：Delay, Time, Description。
+  - **constraint**：Delay, Time, Description。
+  - **required**：Time, Description。
+  - **arrival**：Time, Description。
+  - **slack**：Time, Description。
 
-Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 output_pin，否则为 input_pin（format2 还使用 Type 列）。
+Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 output_pin，否则为 input_pin（format1/pt）；format2 以 Type 列为准。
 
 ---
 
@@ -161,13 +170,12 @@ python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary
 - 测试数据和测试结果**不上传**：`input/` 目录及所有解析/对比输出目录已加入 `.gitignore`。
 - 仓库中仅保留脚本、README 与配置文件；克隆后需自行准备 Timing 报告并指定 `-o` 输出目录运行。
 
-**推送步骤示例（建议新建分支，不直接推 master/main）**：
+**推送到 master 分支**（不包含测试数据与测试结果，已由 `.gitignore` 排除 `input/`、`output/`、`output_*/`）：
 
 ```bash
 git remote add origin https://github.com/<你的用户名>/timerExtract.git   # 仅首次
-git checkout -b feature/lib-parser-cli
-git add .
+git add lib/ scripts/ README.md .gitignore   # 只添加代码与文档，避免 input/output
 git status   # 确认无 input/、output/、output_* 被加入
-git commit -m "docs: clarify refactored lib usage and CLI"
-git push -u origin feature/lib-parser-cli
+git commit -m "feat: lib TimeParser + format1/format2/pt + CLI; docs: format2 type rules"
+git push -u origin master
 ```
