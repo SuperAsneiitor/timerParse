@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 from typing import Any
@@ -6,8 +6,72 @@ from typing import Any
 from .time_parser_base import TimeParser
 
 
+def _desc_to_point(desc: str) -> str:
+    """从 Description 提取 point 名称：Time 与 Description 间可能为 / 或 \\，取其后部分。仅用 split，不用正则。"""
+    if not desc:
+        return ""
+    s = desc.strip()
+    if s.startswith("/ "):
+        s = s[2:].strip()
+    elif s.startswith("\\ "):
+        s = s[2:].strip()
+    if " / " in s:
+        s = s.split(" / ", 1)[-1].strip()
+    elif " \\ " in s:
+        s = s.split(" \\ ", 1)[-1].strip()
+    # 去掉首部的数字、小数点、空格
+    while s and s[0] in " 0123456789.-":
+        s = s[1:].lstrip()
+    return s.strip()
+
+
+def _pin_name_from_desc(desc: str) -> str:
+    """从 Description 中取出 pin 名（路径最后一段，括号前）。用于区分 input_pin / output_pin。"""
+    s = _desc_to_point(desc)
+    if " (" in s:
+        s = s.split(" (", 1)[0]
+    if "/" in s:
+        s = s.split("/")[-1]
+    if "\\" in s:
+        s = s.split("\\")[-1]
+    return s.strip()
+
+
+def _is_numeric_token(s: str) -> bool:
+    """判断是否为数字 token（含负号、小数点），仅用字符串方法。"""
+    s = s.strip()
+    if not s:
+        return False
+    t = s.lstrip("-")
+    return t.replace(".", "", 1).isdigit()
+
+
+def _tail_n_numeric_and_desc(line: str, n: int) -> tuple[list[str], str]:
+    """从整行用 split 解析：跳过第一个 token（Type），取最后 n 个数字 token，其后为 Description。返回 (数字列表, 描述)。"""
+    tokens = line.split()
+    if len(tokens) <= 1:
+        return [], ""
+    rest = tokens[1:]
+    indices: list[int] = []
+    for j in range(len(rest) - 1, -1, -1):
+        if _is_numeric_token(rest[j]):
+            indices.append(j)
+            if len(indices) == n:
+                break
+    if len(indices) < n:
+        return [], " ".join(rest)
+    values = [rest[i] for i in sorted(indices)]
+    last_idx = max(indices)
+    desc = " ".join(rest[last_idx + 1 :])
+    return values, desc
+
+
+# 报告里 Type 为 pin 时，若 pin 名为下列之一则为 output_pin，否则为 input_pin
+_OUTPUT_PIN_NAMES = frozenset({"Q", "Z", "ZN", "ZP"})
+
+
 class Format2Parser(TimeParser):
-    """Format2 报告解析器（Path Start/Path End 风格）。"""
+    """Format2 报告解析器（Path Start/Path End 风格）。按 Type 分派到不同解析方法，使用 split/切片提取属性，不用正则匹配属性。"""
 
     default_attrs_order = [
         "Type",
@@ -25,8 +89,8 @@ class Format2Parser(TimeParser):
     ]
     skip_first_rows = 4
     default_attrs_by_type = {
-        "net": ["Fanout", "Cap"],
         "input_pin": [
+            "Type",
             "D-Trans",
             "Trans",
             "Derate",
@@ -37,10 +101,24 @@ class Format2Parser(TimeParser):
             "Time",
             "Description",
         ],
-        "output_pin": ["Trans", "Derate", "x-coord", "y-coord", "Delay", "Time", "Description"],
+        "output_pin": [
+            "Type",
+            "Trans",
+            "Derate",
+            "x-coord",
+            "y-coord",
+            "Delay",
+            "Time",
+            "Description",
+        ],
+        "net": ["Type", "Fanout", "Cap", "Description"],
+        "clock": ["Type", "Delay", "Time", "Description"],
+        "port": ["Type", "x-coord", "y-coord", "Delay", "Time", "Description"],
+        "constraint": ["Type", "Delay", "Time", "Description"],
+        "required": ["Type", "Time", "Description"],
+        "arrival": ["Type", "Time", "Description"],
+        "slack": ["Type", "Time", "Description"],
     }
-
-    _output_pin_names = frozenset({"Q", "Z", "ZN", "ZP"})
 
     _re_path_start = re.compile(
         r"^\s*Path Start\s+:\s+(.+?)\s+\(\s*flip-flop[^)]*,\s*(\w+)\s*\)\s*$"
@@ -135,8 +213,8 @@ class Format2Parser(TimeParser):
                     break
                 continue
 
-            point, attrs, point_type = self._parse_format2_line(lines[j], col_pos)
-            if not point:
+            point, attrs, point_type = self._parse_line_by_type(lines[j], col_pos, lines[j])
+            if not point and point_type not in ("required", "arrival", "slack"):
                 continue
 
             seg_idx = len(launch_rows) if in_launch else len(capture_rows)
@@ -144,101 +222,301 @@ class Format2Parser(TimeParser):
 
             if self._re_data_arrival.search(lines[j]):
                 if in_launch:
-                    vm = re.search(r"(-?\d+\.\d+)\s+data arrival time", lines[j])
-                    if vm:
-                        meta["arrival_time"] = vm.group(1).strip()
-                launch_rows.append(self.build_point_row(meta, len(launch_rows) + 1, point, filtered))
+                    parts = lines[j].split("data arrival time", 1)
+                    if len(parts) == 2:
+                        tok = parts[0].strip().split()
+                        if tok:
+                            meta["arrival_time"] = tok[-1]
+                launch_rows.append(
+                    self.build_point_row(meta, len(launch_rows) + 1, point, filtered)
+                )
                 in_launch = False
                 in_capture = True
                 continue
 
             if in_launch:
-                launch_rows.append(self.build_point_row(meta, len(launch_rows) + 1, point, filtered))
+                launch_rows.append(
+                    self.build_point_row(meta, len(launch_rows) + 1, point, filtered)
+                )
             elif in_capture:
-                capture_rows.append(self.build_point_row(meta, len(capture_rows) + 1, point, filtered))
+                capture_rows.append(
+                    self.build_point_row(meta, len(capture_rows) + 1, point, filtered)
+                )
 
         for line in lines:
             if "data required time" in line:
-                vm = re.search(r"(-?\d+\.\d+)\s+data required time", line)
-                if vm:
-                    meta["required_time"] = vm.group(1).strip()
-                    break
+                parts = line.split("data required time", 1)
+                if len(parts) == 2:
+                    tok = parts[0].strip().split()
+                    if tok:
+                        meta["required_time"] = tok[-1]
+                break
 
         return meta, launch_rows, capture_rows
 
-    def _parse_format2_line(
-        self,
-        line: str,
-        col_pos: dict[str, int],
-    ) -> tuple[str, dict[str, str], str]:
-        content = line.rstrip()
-        if not content.strip() or "Description" not in col_pos:
-            return "", {}, "other"
-
+    def _values_by_columns(self, content: str, col_pos: dict[str, int]) -> dict[str, str]:
+        """按列位置切片得到各属性原始值，不用正则。"""
         ordered = sorted(
-            [name for name in self.attrs_order if name in col_pos],
+            [n for n in self.attrs_order if n in col_pos],
             key=lambda x: col_pos[x],
         )
         if not ordered:
-            return "", {}, "other"
-
-        desc_start = col_pos["Description"]
-        point_raw = content[desc_start:].strip()
-        if re.search(r"\s+/\s+", point_raw):
-            point_raw = re.split(r"\s+/\s+", point_raw, maxsplit=1)[-1].strip()
-        elif re.search(r"\s+\\\s+", point_raw):
-            point_raw = re.split(r"\s+\\\s+", point_raw, maxsplit=1)[-1].strip()
-        else:
-            point_raw = re.sub(r"^[\s\d.-]+", "", point_raw).strip()
-        point = point_raw.lstrip("/ \\").strip() if point_raw else ""
-
-        attrs: dict[str, str] = {name: "" for name in self.attrs_order}
-        type_col = ""
+            return {}
+        out: dict[str, str] = {}
         for i, name in enumerate(ordered):
             start = col_pos[name]
             end = col_pos[ordered[i + 1]] if i + 1 < len(ordered) else len(content)
             value = content[start:end].strip() if start < end else ""
-            value = "" if value in ("-", "-0.000") else value
-            if name == "Type":
-                type_col = value
-            if name == "Description":
-                attrs["Description"] = point
-                continue
-            if name in ("x-coord", "y-coord"):
-                continue
-            if name == "Derate":
-                dm = re.search(r"(\d+\.\d+\s*,\s*\d+\.\d+)", content)
-                attrs[name] = dm.group(1).replace(" ", "") if dm else value
-                continue
-            attrs[name] = value
+            if value in ("-", "-0.000"):
+                value = ""
+            out[name] = value
+        return out
 
-        brace = re.search(r"\{\s*([-\d.]+)\s+([-\d.]+)\s*\}", content)
-        if brace:
-            attrs["x-coord"] = brace.group(1)
-            attrs["y-coord"] = brace.group(2)
-            rest = content[brace.end() :]
-            m3 = re.match(r"\s*(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+", rest)
-            if m3:
-                attrs["D-Delay"] = m3.group(1)
-                attrs["Delay"] = m3.group(2)
-                attrs["Time"] = m3.group(3)
-            else:
-                m2 = re.match(r"\s*(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+", rest)
-                if m2:
-                    attrs["D-Delay"] = ""
-                    attrs["Delay"] = m2.group(1)
-                    attrs["Time"] = m2.group(2)
+    def _parse_line_by_type(
+        self, line: str, col_pos: dict[str, int], full_line: str = ""
+    ) -> tuple[str, dict[str, str], str]:
+        """根据 Type 分派到对应解析方法；仅用列切片与 split，不用正则匹配属性。"""
+        content = (full_line or line).rstrip()
+        if not content.strip() or "Description" not in col_pos:
+            return "", {}, "other"
 
-        return point, attrs, self._infer_point_type(type_col, point)
+        raw = self._values_by_columns(content, col_pos)
+        type_str = (raw.get("Type") or "").strip().lower()
 
-    def _infer_point_type(self, type_col: str, point_name: str) -> str:
-        t = (type_col or "").strip().lower()
-        if t == "net":
-            return "net"
-        if t == "pin":
-            m = re.search(r"/([A-Za-z0-9_\[\]]+)\s*\(?[A-Z]?", point_name)
-            pin = m.group(1) if m else ""
-            if pin in self._output_pin_names:
-                return "output_pin"
-            return "input_pin"
-        return "other"
+        # 报告里 pin 需区分为 input_pin / output_pin
+        if type_str == "pin":
+            desc_col = content[col_pos["Description"] :].strip()
+            pin_name = _pin_name_from_desc(desc_col)
+            type_str = "output_pin" if pin_name in _OUTPUT_PIN_NAMES else "input_pin"
+
+        parsers = {
+            "input_pin": self._parse_input_pin,
+            "output_pin": self._parse_output_pin,
+            "net": self._parse_net,
+            "clock": self._parse_clock,
+            "port": self._parse_port,
+            "constraint": self._parse_constraint,
+            "required": self._parse_required,
+            "arrival": self._parse_arrival,
+            "slack": self._parse_slack,
+        }
+        parser = parsers.get(type_str)
+        if not parser:
+            return "", {}, "other"
+
+        point_name, attrs = parser(raw, content, col_pos)
+        return point_name, attrs, type_str
+
+    def _desc_from_content(self, content: str, col_pos: dict[str, int]) -> str:
+        """从整行取 Description 列：自列起始到行尾，避免列宽错位。"""
+        if "Description" not in col_pos:
+            return ""
+        return content[col_pos["Description"] :].strip()
+
+    def _desc_from_pin_line(self, content: str) -> str:
+        """从 pin/port 行按「Time 与 Description 间为 / 或 \\」取整段 point 名，不依赖列位置，避免前后被截断。"""
+        line = content.strip()
+        if " / " in line:
+            return line.rsplit(" / ", 1)[-1].strip()
+        if " \\ " in line:
+            return line.rsplit(" \\ ", 1)[-1].strip()
+        return ""
+
+    def _parse_input_pin(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """input pin: D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        for k in ["D-Trans", "Trans", "Derate", "x-coord", "y-coord"]:
+            v = raw.get(k, "").strip()
+            if k == "Derate":
+                v = v.replace(" ", "")
+            if k == "x-coord" or k == "y-coord":
+                xy_cell = self._xy_cell_from_raw(raw)
+                v = self._parse_xy(xy_cell, k)
+            attrs[k] = v
+        attrs["Type"] = raw.get("Type", "")
+        prefix = content[: col_pos["Description"]].strip()
+        nums = self._last_numeric_tokens(prefix, 3)
+        if len(nums) >= 3:
+            attrs["D-Delay"], attrs["Delay"], attrs["Time"] = nums[0], nums[1], nums[2]
+        elif len(nums) == 2:
+            attrs["Delay"], attrs["Time"] = nums[0], nums[1]
+        elif len(nums) == 1:
+            attrs["Time"] = nums[0]
+        desc = self._desc_from_pin_line(content) or self._desc_from_content(content, col_pos)
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _parse_output_pin(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """output pin: Trans, Derate, x-coord, y-coord, Delay, Time, Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        for k in ["Trans", "Derate", "x-coord", "y-coord"]:
+            v = raw.get(k, "").strip()
+            if k == "Derate":
+                v = v.replace(" ", "")
+            if k == "x-coord" or k == "y-coord":
+                xy_cell = self._xy_cell_from_raw(raw)
+                v = self._parse_xy(xy_cell, k)
+            attrs[k] = v
+        attrs["Type"] = raw.get("Type", "")
+        prefix = content[: col_pos["Description"]].strip()
+        nums = self._last_numeric_tokens(prefix, 2)
+        if len(nums) >= 2:
+            attrs["Delay"], attrs["Time"] = nums[0], nums[1]
+        elif len(nums) == 1:
+            attrs["Time"] = nums[0]
+        desc = self._desc_from_pin_line(content) or self._desc_from_content(content, col_pos)
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _xy_cell_from_raw(self, raw: dict[str, str]) -> str:
+        """合并 x-coord 与 y-coord 列（表头可能把 { x y } 拆成两列），便于解析出两个坐标值。"""
+        x_part = (raw.get("x-coord") or "").strip()
+        y_part = (raw.get("y-coord") or "").strip()
+        return (x_part + " " + y_part).strip()
+
+    def _parse_xy(self, value: str, which: str) -> str:
+        """从合并后的坐标串（如 '{  219.156    772.737}' 或 '{  219.156' + '772.737}'）用 split 取出 x 或 y。"""
+        s = value.strip()
+        if s.startswith("{"):
+            s = s[1:]
+        if s.endswith("}"):
+            s = s[:-1]
+        s = s.strip()
+        if not s:
+            return ""
+        parts = s.split()
+        if which == "x-coord" and len(parts) >= 1:
+            return parts[0]
+        if which == "y-coord" and len(parts) >= 2:
+            return parts[1]
+        return ""
+
+    def _parse_net(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """net: Fanout, Cap, Description。用 split：Type 后为 Fanout、Cap（可能跟 xd）、再后为 Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        tokens = content.split()
+        if len(tokens) < 2:
+            return "", attrs
+        rest = tokens[1:]
+        attrs["Fanout"] = rest[0] if rest else ""
+        if len(rest) >= 2:
+            attrs["Cap"] = rest[1].split()[0]
+        # Cap 后可能跟 xd，再后才是 net 名
+        desc_start = 2
+        if len(rest) > 3 and rest[2].lower() == "xd":
+            desc_start = 3
+        desc = " ".join(rest[desc_start:]) if len(rest) > desc_start else ""
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _last_numeric_tokens(self, text: str, n: int) -> list[str]:
+        """从文本中取最后 n 个“像数字”的 token（用 split，不用正则）。"""
+        parts = text.strip().split()
+        out: list[str] = []
+        for i in range(len(parts) - 1, -1, -1):
+            if len(out) >= n:
+                break
+            s = parts[i]
+            if not s:
+                continue
+            if s.lstrip("-").replace(".", "", 1).isdigit():
+                out.append(s)
+        out.reverse()
+        return out
+
+    def _parse_clock(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """clock: Delay, Time, Description。用 split 取行尾两数及之后为描述。"""
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        values, desc = _tail_n_numeric_and_desc(content, 2)
+        if len(values) >= 2:
+            attrs["Delay"], attrs["Time"] = values[0], values[1]
+        elif len(values) == 1:
+            attrs["Time"] = values[0]
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _parse_port(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """port: x-coord, y-coord, Delay, Time, Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        xy_cell = self._xy_cell_from_raw(raw)
+        attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
+        attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
+        values, desc = _tail_n_numeric_and_desc(content, 2)
+        if len(values) >= 2:
+            attrs["Delay"], attrs["Time"] = values[0], values[1]
+        elif len(values) == 1:
+            attrs["Time"] = values[0]
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _parse_constraint(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """constraint: Delay, Time, Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        values, desc = _tail_n_numeric_and_desc(content, 2)
+        if len(values) >= 2:
+            attrs["Delay"], attrs["Time"] = values[0], values[1]
+        elif len(values) == 1:
+            attrs["Time"] = values[0]
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _parse_required(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """required: Time, Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        values, desc = _tail_n_numeric_and_desc(content, 1)
+        if values:
+            attrs["Time"] = values[0]
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _parse_arrival(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """arrival: Time, Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        values, desc = _tail_n_numeric_and_desc(content, 1)
+        if values:
+            attrs["Time"] = values[0]
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
+
+    def _parse_slack(
+        self, raw: dict[str, str], content: str, col_pos: dict[str, int]
+    ) -> tuple[str, dict[str, str]]:
+        """slack: Time, Description。"""
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        values, desc = _tail_n_numeric_and_desc(content, 1)
+        if values:
+            attrs["Time"] = values[0]
+        point = _desc_to_point(desc)
+        attrs["Description"] = point
+        return point, attrs
