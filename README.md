@@ -145,6 +145,13 @@ python scripts/parse_timing_rpt.py report.rpt -o output --metrics Fanout Cap Tra
 
 根据 `launch_path.csv` 生成 PT 的 `report_timing` TCL：通过 `trigger_edge` 决定 through 参数（`r -> -rise_through`，`f -> -fall_through`），net 与虚拟点不写入。若 CSV 无 `trigger_edge` 列，脚本回退到旧规则（按 pin 名判断输出脚）。
 
+脚本会在生成的 tcl 开头加入：
+- `set output_file "report_file.rpt"`
+- `sh rm -rf ${output_file}`
+- `sh touch ${output_file}`
+
+并在每条 `report_timing` 命令末尾追加：`>> ${output_file}`。
+
 ```bash
 # 默认：output/launch_path.csv → output/report_timing.tcl
 python scripts/gen_pt_report_timing.py

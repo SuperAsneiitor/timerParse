@@ -120,6 +120,7 @@ def format_report_timing(
     wrap: bool = True,
     startpoint_pin: str = "",
     endpoint_pin: str = "",
+    output_var_expr: str = "${output_file}",
 ) -> str:
     """Format one report_timing command. -from/-to use [get_clock clock_name] when clock given, else {pin}. extra_args inserted before -rise_through/-fall_through."""
     if startpoint_clock:
@@ -138,18 +139,18 @@ def format_report_timing(
     if extra_args:
         head += " " + extra_args.strip()
     if not through_list:
-        return f"# path_id {path_id}\n{head}\n"
+        return f"# path_id {path_id}\n{head} >> {output_var_expr}\n"
     if wrap:
         lines = [f"# path_id {path_id}", head + " \\"]
         for opt, pin in through_list:
             lines.append(f"  {opt} {{{pin}}} \\")
-        lines[-1] = lines[-1].rstrip(" \\")
+        lines[-1] = lines[-1].rstrip(" \\") + f" >> {output_var_expr}"
         return "\n".join(lines) + "\n"
     parts = [head]
     for opt, pin in through_list:
         parts.append(opt)
         parts.append("{" + pin + "}")
-    return f"# path_id {path_id}\n" + " ".join(parts) + "\n"
+    return f"# path_id {path_id}\n" + " ".join(parts) + f" >> {output_var_expr}\n"
 
 
 def main() -> int:
@@ -190,6 +191,12 @@ def main() -> int:
         metavar="ARGS",
         help="Extra report_timing arguments (e.g. '-max_paths 1 -delay_type max'). Inserted after -from/-to, before -rise_through/-fall_through.",
     )
+    parser.add_argument(
+        "--report-file",
+        default="report_file.rpt",
+        metavar="RPT",
+        help="PT report_timing output report file name used by generated TCL variable output_file",
+    )
     args = parser.parse_args()
 
     csv_path = os.path.abspath(args.launch_csv)
@@ -208,6 +215,9 @@ def main() -> int:
         "# PrimeTime report_timing script generated from launch_path.csv",
         "# -from / -to: [get_clocks clock]",
         "# -rise_through / -fall_through are driven by trigger_edge (r/f) when available",
+        f"set output_file \"{args.report_file}\"",
+        "sh rm -rf ${output_file}",
+        "sh touch ${output_file}",
         "",
     ]
     for pid in path_ids:
@@ -227,6 +237,7 @@ def main() -> int:
             wrap=not args.no_wrap,
             startpoint_pin=start,
             endpoint_pin=rows[0].get("endpoint", ""),
+            output_var_expr="${output_file}",
         ))
 
     out_path = os.path.abspath(args.output)

@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.gen_pt_report_timing import build_through_args, _classify_point
+from scripts.gen_pt_report_timing import build_through_args, _classify_point, format_report_timing
 
 
 class TestGenPtReportTiming(unittest.TestCase):
@@ -40,6 +40,34 @@ class TestGenPtReportTiming(unittest.TestCase):
                 ("-fall_through", "u_out/Q"),
             ],
         )
+
+    def test_format_report_timing_redirect_to_output_file(self):
+        """每条 report_timing 命令末尾都应追加 >> ${output_file}。"""
+        cmd = format_report_timing(
+            path_id=1,
+            startpoint_clock="CLK_A",
+            endpoint_clock="CLK_B",
+            through_list=[("-rise_through", "u_start/A"), ("-fall_through", "u_mid/Z")],
+            wrap=False,
+        )
+        self.assertIn("report_timing -from [get_clocks CLK_A] -to [get_clocks CLK_B]", cmd)
+        self.assertIn("-rise_through {u_start/A}", cmd)
+        self.assertIn("-fall_through {u_mid/Z}", cmd)
+        self.assertIn(">> ${output_file}", cmd)
+
+    def test_format_report_timing_redirect_no_through(self):
+        """无 through 参数时也需要追加 >> ${output_file}。"""
+        cmd = format_report_timing(
+            path_id=2,
+            startpoint_clock="",
+            endpoint_clock="",
+            through_list=[],
+            startpoint_pin="u0/A",
+            endpoint_pin="u1/Z",
+            wrap=False,
+        )
+        self.assertIn("report_timing -from {u0/A} -to {u1/Z}", cmd)
+        self.assertIn(">> ${output_file}", cmd)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,31 @@
 # Release Notes
 
+## [0.3.1] - 2026-03-10
+
+### 更新时间
+
+- **日期**：2026-03-10
+
+### 更新原因与概要
+
+- 增强 PT report_timing 转换脚本输出控制：支持统一 report 文件变量并将每条 report_timing 结果重定向到该文件。
+
+### 新增
+
+- `scripts/gen_pt_report_timing.py` 在生成 tcl 开头增加：
+  - `set output_file "report_file.rpt"`
+  - `sh rm -rf ${output_file}`
+  - `sh touch ${output_file}`
+- 每条 `report_timing` 命令末尾自动追加 `>> ${output_file}`（包括无 through 参数场景）。
+
+### 测试
+
+- `tests/test_gen_pt_report_timing.py` 新增重定向相关断言：
+  - 有 through 参数时追加 `>> ${output_file}`
+  - 无 through 参数时也追加 `>> ${output_file}`
+
+---
+
 ## [0.3.0] - 2026-03-10
 
 ### 更新时间
