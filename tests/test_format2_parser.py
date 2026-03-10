@@ -238,6 +238,29 @@ class TestFormat2ParserOutput(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_trigger_edge_from_slash_backslash(self):
+        """format2 的 input/output pin: '/' -> r, '\\' -> f。"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".rpt", delete=False, encoding="utf-8") as f:
+            f.write(MINIMAL_FORMAT2_REPORT)
+            path = f.name
+        try:
+            out = self.parser.parse_report(path)
+            pin_rows = [
+                r for r in out.launch_rows + out.capture_rows
+                if (r.get("Type") or "").strip().lower() in ("pin", "input_pin", "output_pin")
+            ]
+            self.assertGreater(len(pin_rows), 0)
+            # cell/A 来自 " / "，应为 r
+            row_a = next((r for r in pin_rows if "cell/A" in (r.get("point") or "")), None)
+            # cell/Z 来自 " \ "，应为 f
+            row_z = next((r for r in pin_rows if "cell/Z" in (r.get("point") or "")), None)
+            self.assertIsNotNone(row_a)
+            self.assertIsNotNone(row_z)
+            self.assertEqual((row_a.get("trigger_edge") or "").strip(), "r")
+            self.assertEqual((row_z.get("trigger_edge") or "").strip(), "f")
+        finally:
+            os.unlink(path)
+
 
 class TestFormat2PointNames(unittest.TestCase):
     """Point 名称完整性：多类型、长路径、/ 与 \\、多种 cell 后缀，无前后截断。"""

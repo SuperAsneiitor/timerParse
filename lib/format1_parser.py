@@ -9,12 +9,13 @@ from .time_parser_base import TimeParser
 class Format1Parser(TimeParser):
     """Format1(APR) 报告解析器。"""
 
-    default_attrs_order = ["Fanout", "Cap", "Trans", "Location", "Incr", "Path"]
+    # 在 format1 中，点表最后一列的 r/f 表示触发沿（rise/fall），解析为 trigger_edge。
+    default_attrs_order = ["Fanout", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"]
     skip_first_rows = 2
     default_attrs_by_type = {
         "net": ["Fanout"],
-        "input_pin": ["Cap", "Trans", "Location", "Incr", "Path"],
-        "output_pin": ["Cap", "Trans", "Location", "Incr", "Path"],
+        "input_pin": ["Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
+        "output_pin": ["Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
     }
 
     _output_pin_names = frozenset({"Q", "Z", "ZN", "ZP"})
@@ -125,7 +126,10 @@ class Format1Parser(TimeParser):
                     point, attrs = self.parse_fixed_width_attrs(lines[k], col_pos, self.attrs_order)
                     if not point:
                         continue
-                    filtered = self.apply_type_filter(attrs, self._infer_point_type(point), k - launch_start_idx)
+                    ptype = self._infer_point_type(point)
+                    if ptype in ("input_pin", "output_pin"):
+                        attrs = self._extract_trigger_edge_from_path(attrs)
+                    filtered = self.apply_type_filter(attrs, ptype, k - launch_start_idx)
                     launch_rows.append(self.build_point_row(meta, len(launch_rows) + 1, point, filtered))
                 vm = re.search(r"(-?\d+\.\d+)\s*$", lines[j])
                 if vm:
@@ -148,7 +152,10 @@ class Format1Parser(TimeParser):
                     point, attrs = self.parse_fixed_width_attrs(lines[k], col_pos, self.attrs_order)
                     if not point:
                         continue
-                    filtered = self.apply_type_filter(attrs, self._infer_point_type(point), k - capture_start_idx)
+                    ptype = self._infer_point_type(point)
+                    if ptype in ("input_pin", "output_pin"):
+                        attrs = self._extract_trigger_edge_from_path(attrs)
+                    filtered = self.apply_type_filter(attrs, ptype, k - capture_start_idx)
                     capture_rows.append(self.build_point_row(meta, len(capture_rows) + 1, point, filtered))
                 break
 
@@ -168,6 +175,22 @@ class Format1Parser(TimeParser):
                         break
 
         return meta, launch_rows, capture_rows
+
+    @staticmethod
+    def _extract_trigger_edge_from_path(attrs: dict[str, Any]) -> dict[str, Any]:
+        """从 Path 列末尾的 'r' / 'f' 提取触发沿，写入 trigger_edge，并去掉 Path 中的 r/f。"""
+        path_val = str(attrs.get("Path", "") or "").strip()
+        if not path_val:
+            attrs["trigger_edge"] = ""
+            return attrs
+        tokens = path_val.split()
+        if tokens and tokens[-1] in ("r", "f"):
+            edge = tokens[-1]
+            attrs["trigger_edge"] = edge
+            attrs["Path"] = " ".join(tokens[:-1])
+        else:
+            attrs.setdefault("trigger_edge", "")
+        return attrs
 
     def _infer_point_type(self, point_name: str) -> str:
         if not point_name or "(net)" in point_name:

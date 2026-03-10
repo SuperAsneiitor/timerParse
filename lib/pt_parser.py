@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 from typing import Any
@@ -9,17 +9,17 @@ from .format1_parser import Format1Parser
 class PtParser(Format1Parser):
     """PT 报告解析器。"""
 
-    default_attrs_order = ["Fanout", "Cap", "Trans", "Derate", "Incr", "Path"]
+    default_attrs_order = ["Fanout", "Cap", "Trans", "Derate", "Incr", "Path", "trigger_edge"]
     skip_first_rows = 2
     default_attrs_by_type = {
         "net": ["Fanout", "Cap"],
-        "input_pin": ["Trans", "Incr", "Path"],
-        "output_pin": ["Trans", "Incr", "Path"],
+        "input_pin": ["Trans", "Incr", "Path", "trigger_edge"],
+        "output_pin": ["Trans", "Incr", "Path", "trigger_edge"],
     }
 
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")
     _re_endpoint = re.compile(r"^\s+Endpoint:\s+(.+?)\s*$")
-    _re_clocked_by = re.compile(r"clocked by (\w+)")
+    _re_clocked_by = re.compile(r"clocked by ([^\s)]+)")
     _re_slack = re.compile(r"^\s+slack\s+\((VIOLATED|MET)\)\s")
     _re_slack_value = re.compile(r"(-?\d+\.\d+)\s*$")
     _re_point_header = re.compile(r"^\s+Point\s+", re.IGNORECASE)
@@ -95,7 +95,10 @@ class PtParser(Format1Parser):
                     point, attrs = self.parse_fixed_width_attrs(lines[k], col_pos, self.attrs_order)
                     if not point:
                         continue
-                    filtered = self.apply_type_filter(attrs, self._infer_point_type(point), k - launch_start_idx)
+                    ptype = self._infer_point_type(point)
+                    if ptype in ("input_pin", "output_pin"):
+                        attrs = self._extract_trigger_edge_from_path(attrs)
+                    filtered = self.apply_type_filter(attrs, ptype, k - launch_start_idx)
                     launch_rows.append(self.build_point_row(meta, len(launch_rows) + 1, point, filtered))
                 vm = re.search(r"(-?\d+\.\d+)\s*$", lines[j])
                 if vm:
@@ -118,7 +121,10 @@ class PtParser(Format1Parser):
                     point, attrs = self.parse_fixed_width_attrs(lines[k], col_pos, self.attrs_order)
                     if not point:
                         continue
-                    filtered = self.apply_type_filter(attrs, self._infer_point_type(point), k - capture_start_idx)
+                    ptype = self._infer_point_type(point)
+                    if ptype in ("input_pin", "output_pin"):
+                        attrs = self._extract_trigger_edge_from_path(attrs)
+                    filtered = self.apply_type_filter(attrs, ptype, k - capture_start_idx)
                     capture_rows.append(self.build_point_row(meta, len(capture_rows) + 1, point, filtered))
                 break
 

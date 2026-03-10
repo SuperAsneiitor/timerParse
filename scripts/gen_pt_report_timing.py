@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
 Generate PrimeTime (PT) report_timing TCL script from parsed launch_path.csv.
-Each path: report_timing -from <start> -to <end> -rise_through <input_pins> -fall_through <output_pins>
-Input pin points -> -rise_through; output pin points -> -fall_through; nets and virtual points are skipped.
+
+Rule:
+-rise_through <pin>  <=> trigger_edge == 'r' (rise_edge)
+-fall_through <pin>  <=> trigger_edge == 'f' (fall_edge)
+
+For backward compatibility, if trigger_edge is missing, fallback to pin-name based
+classification (Q/Z/ZN/ZP -> fall, others -> rise).
 """
 from __future__ import annotations
 
@@ -42,12 +47,15 @@ def _is_output_pin(pin_name: str) -> bool:
     return pin_name in OUTPUT_PINS
 
 
-def _classify_point(point: str) -> str | None:
-    """
-    Return "rise" for input pin (-rise_through), "fall" for output pin (-fall_through), None to skip.
-    """
+def _classify_point(point: str, trigger_edge: str = "") -> str | None:
+    """Classify point into rise/fall by trigger_edge first, then fallback to pin-name heuristic."""
     if _is_net_or_virtual(point):
         return None
+    edge = (trigger_edge or "").strip().lower()
+    if edge == "r":
+        return "rise"
+    if edge == "f":
+        return "fall"
     pin = _pin_name_from_point(point)
     if pin is None:
         return None
@@ -82,7 +90,7 @@ def _strip_cell_type(point: str) -> str:
 
 
 def build_through_args(points: list[dict], startpoint: str) -> list[tuple[str, str]]:
-    """Build list of (option, pin) for -rise_through / -fall_through from startpoint onward (skip clock path before startpoint)."""
+    """Build list of (option, pin) for -rise_through / -fall_through from startpoint onward."""
     out: list[tuple[str, str]] = []
     found_start = False
     for row in points:
@@ -93,7 +101,7 @@ def build_through_args(points: list[dict], startpoint: str) -> list[tuple[str, s
                 found_start = True
             else:
                 continue
-        kind = _classify_point(point)
+        kind = _classify_point(point, str(row.get("trigger_edge", "")))
         if kind is None:
             continue
         if kind == "rise":
@@ -198,7 +206,8 @@ def main() -> int:
 
     lines = [
         "# PrimeTime report_timing script generated from launch_path.csv",
-        "# -from / -to: [get_clocks clock]; -rise_through / -fall_through: pins from startpoint",
+        "# -from / -to: [get_clocks clock]",
+        "# -rise_through / -fall_through are driven by trigger_edge (r/f) when available",
         "",
     ]
     for pid in path_ids:

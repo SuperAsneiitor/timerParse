@@ -26,7 +26,7 @@ sta.timing_check_type: setup
   data arrival time                                                                                                                                                                                                                       0.575
 
   clock {capture_clk} ({capture_edge} edge)                                                                                                                                                                                                  0.000       0.000
-  U1/Z (BUF)                                                                                                                                                                      1       0.001       0.010       (3.0, 4.0)        0.200       0.775 r
+  U1/Z (BUF)                                                                                                                                                                      1       0.001       0.010       (3.0, 4.0)        0.200       0.775 f
   library setup time                                                                                                                                                                                                         -0.019      -0.019
   data required time                                                                                                                                                                                                                      0.800
   slack (MET)                                                                                                                                                                                                                             0.225
@@ -135,6 +135,30 @@ class TestFormat1ClockRegex(unittest.TestCase):
         self.assertIn("clock", out.capture_rows[0]["point"])
         self.assertIn("CAPTURE_CLK", out.capture_rows[0]["point"])
         self.assertNotIn("network delay", out.capture_rows[0]["point"])
+
+    def test_trigger_edge_extracted_from_path_tail(self):
+        """input/output pin 的 Path 末尾 r/f 应写入 trigger_edge，并从 Path 中移除。"""
+        rpt = FORMAT1_REPORT_TEMPLATE.format(
+            sp="SP/Q",
+            ep="EP/D",
+            sp_edge="falling",
+            ep_edge="rising",
+            sp_clk="CORECLK",
+            ep_clk="CORECLK",
+            launch_clk="CORE_CLK",
+            launch_edge="rise",
+            capture_clk="ANOTHER_CLK",
+            capture_edge="rise",
+        )
+        out = self._parse_text(rpt)
+        launch_pin = next((r for r in out.launch_rows if "U0/A" in r.get("point", "")), None)
+        capture_pin = next((r for r in out.capture_rows if "U1/Z" in r.get("point", "")), None)
+        self.assertIsNotNone(launch_pin)
+        self.assertIsNotNone(capture_pin)
+        self.assertEqual(launch_pin.get("trigger_edge"), "r")
+        self.assertEqual(capture_pin.get("trigger_edge"), "f")
+        self.assertFalse(str(launch_pin.get("Path", "")).strip().endswith(" r"))
+        self.assertFalse(str(capture_pin.get("Path", "")).strip().endswith(" f"))
 
 
 if __name__ == "__main__":

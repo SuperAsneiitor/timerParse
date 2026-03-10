@@ -34,11 +34,11 @@
 
 除各格式规定的「前 N 行」保留全部属性外，其余 point 按类型只保留部分列：
 
-- **format1 (APR)**：前 2 行全量；**input_pin / output_pin** → Cap, Trans, Location, Incr, Path；**net** → Fanout。
-- **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Incr, Path；**net** → Fanout, Cap。
+- **format1 (APR)**：前 2 行全量；**input_pin / output_pin** → Cap, Trans, Location, Incr, Path, trigger_edge；**net** → Fanout。
+- **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Incr, Path, trigger_edge；**net** → Fanout, Cap。
 - **format2**：前 4 行全量；类型由 Type 列判断，各类型保留属性如下：
-  - **input_pin**：D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description（Time 与 Description 间可有 `/` 或 `\`）。
-  - **output_pin**：Trans, Derate, x-coord, y-coord, Delay, Time, Description。
+  - **input_pin**：D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, trigger_edge, Description（Time 与 Description 间可有 `/` 或 `\`）。
+  - **output_pin**：Trans, Derate, x-coord, y-coord, Delay, Time, trigger_edge, Description。
   - **net**：Fanout, Cap, Description（Cap 后可能跟 `xd`）。
   - **clock**：Delay, Time, Description。
   - **port**：Trans, x-coord, y-coord, Delay, Time, Description（Time 与 Description 间可有 `/` 或 `\`）。
@@ -48,6 +48,10 @@
   - **slack**：Time, Description。
 
 Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 output_pin，否则为 input_pin（format1/pt）；format2 以 Type 列为准。
+
+**trigger_edge 规则**：
+- **format1 / pt**：input/output pin 的 `Path` 最后一列 `r/f` 分别映射为 `trigger_edge=r/f`。
+- **format2**：input/output pin 在 `Time` 与 `Description` 之间若为 ` / ` 则 `trigger_edge=r`，若为 ` \ ` 则 `trigger_edge=f`。
 
 **format1 兼容说明**：点表中 launch/capture 段起始通过 `clock <clock_name> [(rise|fall edge)]` 行识别（有些报告 capture 段可能只有 `clock CORE_CLK`，不带 rise/fall edge）。为避免误把 `clock network delay (propagated)` 等描述行当作段起点，解析器要求 clock 名（及可选 edge 描述）后需直接进入数值列。`clock_name` 不再假设为固定值（例如不固定为 `CPU_CLK`）。Startpoint/Endpoint 括号中的触发沿文本可能为 `rising edge-triggered`、`falling edge-triggered` 或 `falling rising edge-triggered` 等，解析时以 `clocked by <clock>` 为准提取时钟名。
 
@@ -64,7 +68,9 @@ Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 
 - `lib/format2_parser.py`：`Format2Parser`，解析 Path Start/Path End 风格。
 - `lib/pt_parser.py`：`PtParser`，解析 PT 风格。
 - `lib/cli.py` + `lib/__main__.py`：命令行入口，支持 `python -m lib`。
-- `tests/test_format2_parser.py`：format2 解析与 point 名称、y-coord、Derate 拆分的单元/集成测试。
+- `tests/test_format2_parser.py`：format2 解析与 point 名称、y-coord、Derate 拆分、trigger_edge 的单元/集成测试。
+- `tests/test_format1_parser.py` / `tests/test_pt_parser.py`：format1/pt 解析、clock 识别与 trigger_edge 测试。
+- `tests/test_gen_pt_report_timing.py`：report_timing 转换脚本对 trigger_edge 的参数映射测试。
 
 ### CLI 用法（推荐）
 
@@ -95,7 +101,7 @@ python -m lib path/to/report.rpt --format pt -o output
 ### 测试
 
 ```bash
-python -m unittest tests.test_format2_parser -v
+python -m unittest tests.test_format1_parser tests.test_format2_parser tests.test_pt_parser tests.test_gen_pt_report_timing -v
 ```
 
 ---
@@ -137,7 +143,7 @@ python scripts/parse_timing_rpt.py report.rpt -o output --metrics Fanout Cap Tra
 
 ## 3. 生成 PrimeTime report_timing
 
-根据 `launch_path.csv` 生成 PT 的 `report_timing` TCL：input pin 用 `-rise_through`/`-fall_through`，output pin（Q/Z/ZN）用 `-fall_through`，net 与虚拟点不写入。
+根据 `launch_path.csv` 生成 PT 的 `report_timing` TCL：通过 `trigger_edge` 决定 through 参数（`r -> -rise_through`，`f -> -fall_through`），net 与虚拟点不写入。若 CSV 无 `trigger_edge` 列，脚本回退到旧规则（按 pin 名判断输出脚）。
 
 ```bash
 # 默认：output/launch_path.csv → output/report_timing.tcl

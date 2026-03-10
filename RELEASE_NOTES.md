@@ -1,5 +1,38 @@
 # Release Notes
 
+## [0.3.0] - 2026-03-10
+
+### 更新时间
+
+- **日期**：2026-03-10
+
+### 更新原因与概要
+
+- 为 timing path 的 input/output pin 新增统一属性 `trigger_edge`，并用于 PT `report_timing` 参数生成，保证 across format_1 / format_2 / pt 的触发沿语义一致。
+
+### 新增
+
+- **format1 / pt**：从 `Path` 最后一列 `r/f` 提取 `trigger_edge`。
+- **format2**：根据 `Time` 与 `Description` 之间分隔符提取 `trigger_edge`（` / ` -> `r`，` \ ` -> `f`）。
+- **转换脚本**：`scripts/gen_pt_report_timing.py` 改为优先按 `trigger_edge` 映射 through 参数（`r -> -rise_through`，`f -> -fall_through`）。
+
+### 兼容性
+
+- 若 `launch_path.csv` 未包含 `trigger_edge`（旧版本 CSV），`gen_pt_report_timing.py` 自动回退到旧规则（按 pin 名启发式判断 rise/fall），兼容历史流程。
+
+### 测试
+
+- `tests/test_format1_parser.py`：新增 `trigger_edge` 提取断言。
+- `tests/test_format2_parser.py`：新增 `trigger_edge`（`/`、`\`）提取断言。
+- 新增 `tests/test_pt_parser.py`：PT 解析与 `trigger_edge` 提取。
+- 新增 `tests/test_gen_pt_report_timing.py`：脚本通过参数映射测试。
+
+### 文档
+
+- `README.md`：更新三种格式的 `trigger_edge` 规则、测试命令与 report_timing 参数生成规则。
+
+---
+
 ## [0.2.2] - 2026-03-10
 
 ### 更新时间

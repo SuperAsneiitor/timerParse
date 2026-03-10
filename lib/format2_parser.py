@@ -85,6 +85,7 @@ class Format2Parser(TimeParser):
         "D-Delay",
         "Delay",
         "Time",
+        "trigger_edge",
         "Description",
     ]
     skip_first_rows = 4
@@ -99,6 +100,7 @@ class Format2Parser(TimeParser):
             "D-Delay",
             "Delay",
             "Time",
+            "trigger_edge",
             "Description",
         ],
         "output_pin": [
@@ -109,6 +111,7 @@ class Format2Parser(TimeParser):
             "y-coord",
             "Delay",
             "Time",
+            "trigger_edge",
             "Description",
         ],
         "net": ["Type", "Fanout", "Cap", "Description"],
@@ -322,6 +325,15 @@ class Format2Parser(TimeParser):
             return line.rsplit(" \\ ", 1)[-1].strip()
         return ""
 
+    def _trigger_edge_from_line(self, content: str) -> str:
+        """根据 Time 与 Description 之间分隔符判断触发沿：' / ' -> r, ' \\ ' -> f。"""
+        line = content.strip()
+        if " / " in line:
+            return "r"
+        if " \\ " in line:
+            return "f"
+        return ""
+
     def _parse_input_pin(
         self, raw: dict[str, str], content: str, col_pos: dict[str, int]
     ) -> tuple[str, dict[str, str]]:
@@ -349,6 +361,7 @@ class Format2Parser(TimeParser):
             attrs["Delay"], attrs["Time"] = nums[0], nums[1]
         elif len(nums) == 1:
             attrs["Time"] = nums[0]
+        attrs["trigger_edge"] = self._trigger_edge_from_line(content)
         desc = self._desc_from_pin_line(content) or self._desc_from_content(content, col_pos)
         point = _desc_to_point(desc)
         attrs["Description"] = point
@@ -378,6 +391,7 @@ class Format2Parser(TimeParser):
             attrs["Delay"], attrs["Time"] = nums[0], nums[1]
         elif len(nums) == 1:
             attrs["Time"] = nums[0]
+        attrs["trigger_edge"] = self._trigger_edge_from_line(content)
         desc = self._desc_from_pin_line(content) or self._desc_from_content(content, col_pos)
         point = _desc_to_point(desc)
         attrs["Description"] = point
