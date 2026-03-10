@@ -1,0 +1,112 @@
+# -*- coding: utf-8 -*-
+"""Format1(APR) 解析器测试：clock 行匹配（非固定 CPU_CLK）与 edge-triggered 变体。"""
+from __future__ import annotations
+
+import os
+import tempfile
+import unittest
+
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from lib.format1_parser import Format1Parser
+
+
+FORMAT1_REPORT_TEMPLATE = r"""
+sta.timing_check_type: setup
+  Startpoint: {sp} ({sp_edge} edge-triggered flip-flop clocked by {sp_clk})
+  Endpoint: {ep} ({ep_edge} edge-triggered flip-flop clocked by {ep_clk})
+  Scenario: demo
+
+  Point                                                                                                                                                                    Fanout  Cap         Trans       Location           Incr        Path
+  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  clock {launch_clk} ({launch_edge} edge)                                                                                                                                                                                                   0.000       0.000
+  U0/A (BUF)                                                                                                                                                                      1       0.001       0.010       (1.0, 2.0)        0.100       0.100 r
+  data arrival time                                                                                                                                                                                                                       0.575
+
+  clock {capture_clk} ({capture_edge} edge)                                                                                                                                                                                                  0.000       0.000
+  U1/Z (BUF)                                                                                                                                                                      1       0.001       0.010       (3.0, 4.0)        0.200       0.775 r
+  library setup time                                                                                                                                                                                                         -0.019      -0.019
+  data required time                                                                                                                                                                                                                      0.800
+  slack (MET)                                                                                                                                                                                                                             0.225
+"""
+
+
+class TestFormat1ClockRegex(unittest.TestCase):
+    def setUp(self) -> None:
+        self.parser = Format1Parser()
+
+    def _parse_text(self, text: str):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".rpt", delete=False, encoding="utf-8") as f:
+            f.write(text.lstrip("\n"))
+            path = f.name
+        try:
+            return self.parser.parse_report(path)
+        finally:
+            os.unlink(path)
+
+    def test_clock_line_matches_any_clock_name(self):
+        """点表 clock 行不应硬编码 CPU_CLK，应能匹配任意 clock 名。"""
+        rpt = FORMAT1_REPORT_TEMPLATE.format(
+            sp="SP/Q",
+            ep="EP/D",
+            sp_edge="falling",
+            ep_edge="rising",
+            sp_clk="CORECLK",
+            ep_clk="CORECLK",
+            launch_clk="CORE_CLK",
+            launch_edge="rise",
+            capture_clk="ANOTHER_CLK",
+            capture_edge="rise",
+        )
+        out = self._parse_text(rpt)
+        self.assertGreater(len(out.launch_rows), 0)
+        self.assertGreater(len(out.capture_rows), 0)
+        # launch 第一行通常为 clock 行
+        self.assertIn("clock", out.launch_rows[0]["point"])
+        self.assertIn("CORE_CLK", out.launch_rows[0]["point"])
+        # capture 第一行通常为 clock 行
+        self.assertIn("clock", out.capture_rows[0]["point"])
+        self.assertIn("ANOTHER_CLK", out.capture_rows[0]["point"])
+
+    def test_clock_line_matches_fall_edge(self):
+        """点表 clock 行应支持 (fall edge)。"""
+        rpt = FORMAT1_REPORT_TEMPLATE.format(
+            sp="SP/Q",
+            ep="EP/D",
+            sp_edge="falling",
+            ep_edge="rising",
+            sp_clk="CLK_F",
+            ep_clk="CLK_F",
+            launch_clk="CLK_F",
+            launch_edge="fall",
+            capture_clk="CLK_F",
+            capture_edge="fall",
+        )
+        out = self._parse_text(rpt)
+        self.assertGreater(len(out.launch_rows), 0)
+        self.assertIn("(fall edge)", out.launch_rows[0]["point"])
+
+    def test_start_end_clocked_by_parses_various_edge_triggered_text(self):
+        """Startpoint/Endpoint 中不仅 rising/falling，也可能出现 falling rising edge-triggered 文案。"""
+        rpt = FORMAT1_REPORT_TEMPLATE.format(
+            sp="SP/Q",
+            ep="EP/D",
+            sp_edge="falling rising",
+            ep_edge="falling rising",
+            sp_clk="MIXEDCLK",
+            ep_clk="MIXEDCLK",
+            launch_clk="MIXED_CLK",
+            launch_edge="rise",
+            capture_clk="MIXED_CLK",
+            capture_edge="rise",
+        )
+        out = self._parse_text(rpt)
+        self.assertEqual(out.summary_rows[0]["startpoint_clock"], "MIXEDCLK")
+        self.assertEqual(out.summary_rows[0]["endpoint_clock"], "MIXEDCLK")
+
+
+if __name__ == "__main__":
+    unittest.main()
+

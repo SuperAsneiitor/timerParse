@@ -49,6 +49,8 @@
 
 Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 output_pin，否则为 input_pin（format1/pt）；format2 以 Type 列为准。
 
+**format1 兼容说明**：点表中 launch/capture 段起始通过 `clock <clock_name> (rise|fall edge)` 行识别，`clock_name` 不再假设为固定值（例如不固定为 `CPU_CLK`）。Startpoint/Endpoint 括号中的触发沿文本可能为 `rising edge-triggered`、`falling edge-triggered` 或 `falling rising edge-triggered` 等，解析时以 `clocked by <clock>` 为准提取时钟名。
+
 **format2 兼容说明**：若报告中 Derate 列与坐标连写（如 `0.900,0.900{219.156,772.737}`），解析器会自动拆成 Derate 与 x-coord、y-coord，避免坐标误入 Derate 列。pin/port 的 Description 按行内 ` / ` 或 ` \ ` 取整段，避免 point 名被列宽截断。
 
 ---

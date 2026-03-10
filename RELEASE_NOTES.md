@@ -1,5 +1,36 @@
 # Release Notes
 
+## [0.2.1] - 2026-03-09
+
+### 更新时间
+
+- **日期**：2026-03-09
+
+### 更新原因与概要
+
+- 修复 format1(APR) 解析中 **clock 行匹配硬编码为 CPU_CLK** 导致在其它时钟名报告中无法识别 launch/capture 段的问题。
+- 兼容更多触发沿文本（包括 `falling rising edge-triggered`），提升模板化适配能力。
+- 增加 format1 测试用例，避免回归；同时移除仓库中误跟踪的 `input/` 大文件，确保不上传测试数据。
+
+### 修复
+
+- **format1**：点表段起始识别从 `clock CPU_CLK (rise edge)` 改为 `clock <clock_name> (rise|fall edge)`，不再依赖固定时钟名。
+- **format1**：`clocked by` 时钟名提取更宽松（支持下划线等字符）。
+
+### 新增
+
+- **测试**：新增 `tests/test_format1_parser.py`，覆盖：
+  - 任意 clock 名（非 CPU_CLK）
+  - `(rise edge)` / `(fall edge)` 两类 clock 行
+  - Startpoint/Endpoint 中 `falling rising edge-triggered` 文案
+
+### 仓库与发布
+
+- 从仓库索引中移除 `input/place_REG2REG.rpt`（仅删除远端跟踪，保留本地文件），避免上传测试输入数据；`input/` 仍由 `.gitignore` 排除。
+- **README**：补充 format1 的兼容说明与识别规则。
+
+---
+
 ## [0.2.0] - 2025-03-09
 
 ### 更新时间

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 from typing import Any
@@ -21,12 +21,14 @@ class Format1Parser(TimeParser):
 
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s+\(.+\)\s*$")
     _re_endpoint = re.compile(r"^\s+Endpoint:\s+(.+?)\s+\(.+\)\s*$")
-    _re_clocked_by = re.compile(r"clocked by (\w+)")
+    _re_clocked_by = re.compile(r"clocked by ([^\s)]+)")
     _re_slack = re.compile(r"^\s+slack\s+\((VIOLATED|MET)\)\s")
     _re_slack_value = re.compile(r"(-?\d+\.\d+)\s*$")
     _re_point_header = re.compile(r"^\s+Point\s+", re.IGNORECASE)
     _re_sep_line = re.compile(r"^\s+-{3,}\s*$")
-    _re_clock_rise = re.compile(r"^\s+clock\s+CPU_CLK\s+\(rise\s+edge\)\s")
+    # 点表中 launch/capture 段通常从 "clock <clock_name> (rise|fall edge)" 开始。
+    # 注意 clock 名不是固定 CPU_CLK，且可能存在 fall edge。
+    _re_clock_edge = re.compile(r"^\s+clock\s+\S+\s+\((rise|fall)\s+edge\)\s", re.IGNORECASE)
     _re_data_arrival = re.compile(r"^\s+data\s+arrival\s+time\s")
     _re_library_setup = re.compile(r"^\s+library\s+setup\s+time\s")
 
@@ -107,7 +109,7 @@ class Format1Parser(TimeParser):
         in_launch = False
         launch_start_idx = -1
         for j in range(table_start, len(lines)):
-            if self._re_clock_rise.match(lines[j]):
+            if self._re_clock_edge.match(lines[j]):
                 in_launch = True
                 launch_start_idx = j
                 continue
@@ -130,7 +132,7 @@ class Format1Parser(TimeParser):
             if self._re_data_arrival.match(lines[j]):
                 after_data_arrival = True
                 continue
-            if after_data_arrival and self._re_clock_rise.match(lines[j]):
+            if after_data_arrival and self._re_clock_edge.match(lines[j]):
                 in_capture = True
                 capture_start_idx = j
                 continue
