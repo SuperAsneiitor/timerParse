@@ -113,7 +113,7 @@ class Format2Parser(TimeParser):
         ],
         "net": ["Type", "Fanout", "Cap", "Description"],
         "clock": ["Type", "Delay", "Time", "Description"],
-        "port": ["Type", "x-coord", "y-coord", "Delay", "Time", "Description"],
+        "port": ["Type", "Trans", "x-coord", "y-coord", "Delay", "Time", "Description"],
         "constraint": ["Type", "Delay", "Time", "Description"],
         "required": ["Type", "Time", "Description"],
         "arrival": ["Type", "Time", "Description"],
@@ -327,14 +327,19 @@ class Format2Parser(TimeParser):
     ) -> tuple[str, dict[str, str]]:
         """input pin: D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description。"""
         attrs = {k: "" for k in self.attrs_order}
-        for k in ["D-Trans", "Trans", "Derate", "x-coord", "y-coord"]:
-            v = raw.get(k, "").strip()
-            if k == "Derate":
-                v = v.replace(" ", "")
-            if k == "x-coord" or k == "y-coord":
-                xy_cell = self._xy_cell_from_raw(raw)
-                v = self._parse_xy(xy_cell, k)
-            attrs[k] = v
+        derate_raw = (raw.get("Derate") or "").strip()
+        if "{" in derate_raw:
+            derate_part, x_val, y_val = self._split_derate_and_xy(derate_raw)
+            attrs["Derate"] = derate_part
+            attrs["x-coord"] = x_val
+            attrs["y-coord"] = y_val
+        else:
+            attrs["Derate"] = derate_raw.replace(" ", "")
+            xy_cell = self._xy_cell_from_raw(raw)
+            attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
+            attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
+        attrs["D-Trans"] = (raw.get("D-Trans") or "").strip()
+        attrs["Trans"] = (raw.get("Trans") or "").strip()
         attrs["Type"] = raw.get("Type", "")
         prefix = content[: col_pos["Description"]].strip()
         nums = self._last_numeric_tokens(prefix, 3)
@@ -354,14 +359,18 @@ class Format2Parser(TimeParser):
     ) -> tuple[str, dict[str, str]]:
         """output pin: Trans, Derate, x-coord, y-coord, Delay, Time, Description。"""
         attrs = {k: "" for k in self.attrs_order}
-        for k in ["Trans", "Derate", "x-coord", "y-coord"]:
-            v = raw.get(k, "").strip()
-            if k == "Derate":
-                v = v.replace(" ", "")
-            if k == "x-coord" or k == "y-coord":
-                xy_cell = self._xy_cell_from_raw(raw)
-                v = self._parse_xy(xy_cell, k)
-            attrs[k] = v
+        derate_raw = (raw.get("Derate") or "").strip()
+        if "{" in derate_raw:
+            derate_part, x_val, y_val = self._split_derate_and_xy(derate_raw)
+            attrs["Derate"] = derate_part
+            attrs["x-coord"] = x_val
+            attrs["y-coord"] = y_val
+        else:
+            attrs["Derate"] = derate_raw.replace(" ", "")
+            xy_cell = self._xy_cell_from_raw(raw)
+            attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
+            attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
+        attrs["Trans"] = (raw.get("Trans") or "").strip()
         attrs["Type"] = raw.get("Type", "")
         prefix = content[: col_pos["Description"]].strip()
         nums = self._last_numeric_tokens(prefix, 2)
@@ -379,6 +388,24 @@ class Format2Parser(TimeParser):
         x_part = (raw.get("x-coord") or "").strip()
         y_part = (raw.get("y-coord") or "").strip()
         return (x_part + " " + y_part).strip()
+
+    def _split_derate_and_xy(self, derate_cell: str) -> tuple[str, str, str]:
+        """当 Derate 列与坐标连在一起（如 1.100,1.100{219.156,772.737}）时拆成 Derate 与 x、y。返回 (derate_clean, x, y)。"""
+        s = (derate_cell or "").strip()
+        if not s:
+            return "", "", ""
+        if "{" not in s:
+            return s.replace(" ", ""), "", ""
+        idx = s.index("{")
+        derate_part = s[:idx].strip().replace(" ", "")
+        inner = s[idx + 1 :].strip()
+        if inner.endswith("}"):
+            inner = inner[:-1].strip()
+        inner = inner.replace(",", " ")
+        parts = inner.split()
+        x = parts[0] if len(parts) >= 1 else ""
+        y = parts[1] if len(parts) >= 2 else ""
+        return derate_part, x, y
 
     def _parse_xy(self, value: str, which: str) -> str:
         """从合并后的坐标串（如 '{  219.156    772.737}' 或 '{  219.156' + '772.737}'）用 split 取出 x 或 y。"""
@@ -452,17 +479,25 @@ class Format2Parser(TimeParser):
     def _parse_port(
         self, raw: dict[str, str], content: str, col_pos: dict[str, int]
     ) -> tuple[str, dict[str, str]]:
-        """port: x-coord, y-coord, Delay, Time, Description。"""
+        """port: Trans, x-coord, y-coord, Delay, Time, Description（Time 与 Description 间可有 / 或 \\）。"""
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        xy_cell = self._xy_cell_from_raw(raw)
-        attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
-        attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
+        attrs["Trans"] = (raw.get("Trans") or "").strip()
+        derate_raw = (raw.get("Derate") or "").strip()
+        if "{" in derate_raw:
+            _, x_val, y_val = self._split_derate_and_xy(derate_raw)
+            attrs["x-coord"] = x_val
+            attrs["y-coord"] = y_val
+        else:
+            xy_cell = self._xy_cell_from_raw(raw)
+            attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
+            attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
         values, desc = _tail_n_numeric_and_desc(content, 2)
         if len(values) >= 2:
             attrs["Delay"], attrs["Time"] = values[0], values[1]
         elif len(values) == 1:
             attrs["Time"] = values[0]
+        desc = self._desc_from_pin_line(content) or desc
         point = _desc_to_point(desc)
         attrs["Description"] = point
         return point, attrs

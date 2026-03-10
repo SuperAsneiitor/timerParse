@@ -41,13 +41,15 @@
   - **output_pin**：Trans, Derate, x-coord, y-coord, Delay, Time, Description。
   - **net**：Fanout, Cap, Description（Cap 后可能跟 `xd`）。
   - **clock**：Delay, Time, Description。
-  - **port**：Delay, Time, Description。
+  - **port**：Trans, x-coord, y-coord, Delay, Time, Description（Time 与 Description 间可有 `/` 或 `\`）。
   - **constraint**：Delay, Time, Description。
   - **required**：Time, Description。
   - **arrival**：Time, Description。
   - **slack**：Time, Description。
 
 Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 output_pin，否则为 input_pin（format1/pt）；format2 以 Type 列为准。
+
+**format2 兼容说明**：若报告中 Derate 列与坐标连写（如 `0.900,0.900{219.156,772.737}`），解析器会自动拆成 Derate 与 x-coord、y-coord，避免坐标误入 Derate 列。pin/port 的 Description 按行内 ` / ` 或 ` \ ` 取整段，避免 point 名被列宽截断。
 
 ---
 
@@ -60,6 +62,7 @@ Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 
 - `lib/format2_parser.py`：`Format2Parser`，解析 Path Start/Path End 风格。
 - `lib/pt_parser.py`：`PtParser`，解析 PT 风格。
 - `lib/cli.py` + `lib/__main__.py`：命令行入口，支持 `python -m lib`。
+- `tests/test_format2_parser.py`：format2 解析与 point 名称、y-coord、Derate 拆分的单元/集成测试。
 
 ### CLI 用法（推荐）
 
@@ -86,6 +89,12 @@ python -m lib path/to/report.rpt --format pt -o output
 - `launch_path.csv`
 - `capture_path.csv`
 - `path_summary.csv`（列为 `path_id,startpoint,endpoint,arrival_time,required_time,slack`）
+
+### 测试
+
+```bash
+python -m unittest tests.test_format2_parser -v
+```
 
 ---
 

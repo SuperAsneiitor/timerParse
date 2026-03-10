@@ -18,6 +18,17 @@ from lib.format2_parser import (
 )
 
 
+def _test_split_derate_xy():
+    """验证 Derate 列含 {x,y} 时能拆成 Derate 与 x、y（供 test_derate_xy_split 调用）。"""
+    p = Format2Parser()
+    derate_clean, x, y = p._split_derate_and_xy("1.100,1.100{219.156,772.737}")
+    assert derate_clean == "1.100,1.100", derate_clean
+    assert x == "219.156", x
+    assert y == "772.737", y
+    derate_clean2, x2, y2 = p._split_derate_and_xy("0.900,0.900")
+    assert derate_clean2 == "0.900,0.900" and x2 == "" and y2 == "", (derate_clean2, x2, y2)
+
+
 # 最小 format2 报告片段：单条 path，含 clock/port/net/pin/arrival/required/slack
 MINIMAL_FORMAT2_REPORT = r"""
 Path Start         :  start/Q ( flip-flop, falling edge-triggered,  CPU_CLK)
@@ -117,6 +128,10 @@ class TestFormat2Helpers(unittest.TestCase):
         self.assertTrue(_is_numeric_token("772.737"))
         self.assertFalse(_is_numeric_token("xd"))
         self.assertFalse(_is_numeric_token("pll_cpu_clk"))
+
+    def test_derate_xy_split(self):
+        """Derate 列与坐标连写（如 1.100,1.100{219.156,772.737}）时拆成 Derate 与 x、y。"""
+        _test_split_derate_xy()
 
 
 class TestFormat2ParserOutput(unittest.TestCase):
