@@ -1,5 +1,30 @@
 # Release Notes
 
+## [0.4.2] - 2026-03-10
+
+### 更新时间
+
+- **日期**：2026-03-10
+
+### 更新原因与概要
+
+- 根据使用反馈，统计均值调整为按绝对值计算，并将输出精度统一为小数点后 3 位，便于阅读与对齐。
+
+### 变更
+
+- `compare_stats` 中 `mean` 改为 `fmean(abs(ratio_percent))`。
+- ratio 与统计输出精度统一为 3 位小数：
+  - CSV ratio（如 `10.000%`）
+  - stats JSON / stats CSV 中数值
+  - HTML 报告中的统计与阈值百分比展示
+
+### 文档与测试
+
+- `README.md` 补充 3 位小数与绝对值均值说明。
+- `tests/test_compare_path_summary.py` 增加 ratio 精度与绝对值均值断言。
+
+---
+
 ## [0.4.1] - 2026-03-10
 
 ### 更新时间
@@ -12,7 +37,7 @@
 
 ### 变更
 
-- `arrival_time_ratio` / `required_time_ratio` / `slack_ratio` 统一改为百分比输出（例如 `10.000000%`）。
+- `arrival_time_ratio` / `required_time_ratio` / `slack_ratio` 统一改为百分比输出（例如 `10.000%`）。
 - 统计/相关性/图表流程已兼容百分比输入解析。
 - 阈值默认值从 `0.1` 调整为 `10`（即 10%），与百分比单位保持一致。
 - HTML 报告中的统计与阈值字段改为带 `%` 展示，和 CSV ratio 单位一致。

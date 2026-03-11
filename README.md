@@ -196,8 +196,10 @@ python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary
 
 - `compare_result.csv`：完整版（path_id、startpoint/endpoint、各指标 golden/test/ratio）。
 - `compare_result_simple.csv`：简化版（仅 `path_id` + 三列 ratio）。
+- ratio 与统计数值默认保留 **小数点后 3 位**。
 - `compare_stats.json`：结构化统计结果，包含：
   - 基础统计：`count/min/max/mean/median/std`
+    - 其中 `mean` 按 `abs(ratio_percent)` 计算（绝对值均值）
   - 分位数：`p90/p95/p99`
   - 阈值统计：`abs(ratio_percent) > threshold` 的 `count/ratio`
   - 相关性：`arrival-required`、`arrival-slack`、`required-slack` 的 Pearson 相关系数

@@ -51,9 +51,9 @@ class TestComparePathSummary(unittest.TestCase):
 
     def test_compute_stats_quantile_threshold_and_correlation(self):
         result = cps.compare(cps.load_summary(str(self.golden)), cps.load_summary(str(self.test)))
-        self.assertTrue(result[0]["arrival_time_ratio"].endswith("%"))
-        self.assertTrue(result[0]["required_time_ratio"].endswith("%"))
-        self.assertTrue(result[0]["slack_ratio"].endswith("%"))
+        self.assertEqual(result[0]["arrival_time_ratio"], "10.000%")
+        self.assertEqual(result[0]["required_time_ratio"], "8.333%")
+        self.assertEqual(result[0]["slack_ratio"], "25.000%")
 
         stats = cps.compute_stats(result, threshold=5)
 
@@ -64,6 +64,7 @@ class TestComparePathSummary(unittest.TestCase):
 
         arrival = stats["metrics"]["arrival_time_ratio"]
         self.assertEqual(arrival["count"], 3)
+        self.assertEqual(arrival["mean"], 10.0)
         self.assertIsNotNone(arrival["p90"])
         self.assertIsNotNone(arrival["p95"])
         self.assertIsNotNone(arrival["p99"])

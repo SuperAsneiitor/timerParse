@@ -34,6 +34,12 @@ FIELDNAMES_FULL = [
 FIELDNAMES_SIMPLE = ["path_id", "arrival_time_ratio", "required_time_ratio", "slack_ratio"]
 
 
+def _round3(v: float | None) -> float | None:
+    if v is None:
+        return None
+    return round(float(v), 3)
+
+
 def _float(s: str):
     s = (s or "").strip()
     if s == "":
@@ -52,7 +58,7 @@ def _ratio(test_val: float | None, golden_val: float | None) -> str:
         return ""
     if golden_val == 0:
         return ""
-    return f"{((test_val - golden_val) / golden_val) * 100:.6f}%"
+    return f"{((test_val - golden_val) / golden_val) * 100:.3f}%"
 
 
 def load_summary(path: str) -> list[dict]:
@@ -143,20 +149,20 @@ def compute_stats(rows: list[dict], threshold: float = 10.0) -> dict:
         if vals:
             col_stats = {
                 "count": len(vals),
-                "min": min(vals),
-                "max": max(vals),
-                "mean": statistics.fmean(vals),
-                "median": statistics.median(vals),
-                "std": statistics.stdev(vals) if len(vals) > 1 else 0.0,
-                "p90": _quantile(vals, 0.9),
-                "p95": _quantile(vals, 0.95),
-                "p99": _quantile(vals, 0.99),
+                "min": _round3(min(vals)),
+                "max": _round3(max(vals)),
+                "mean": _round3(statistics.fmean(abs(v) for v in vals)),
+                "median": _round3(statistics.median(vals)),
+                "std": _round3(statistics.stdev(vals) if len(vals) > 1 else 0.0),
+                "p90": _round3(_quantile(vals, 0.9)),
+                "p95": _round3(_quantile(vals, 0.95)),
+                "p99": _round3(_quantile(vals, 0.99)),
             }
             exceed = [v for v in vals if abs(v) > threshold]
             col_stats["threshold"] = {
-                "value": threshold,
+                "value": _round3(threshold),
                 "count": len(exceed),
-                "ratio": (len(exceed) / len(vals)) if vals else 0.0,
+                "ratio": _round3((len(exceed) / len(vals)) if vals else 0.0),
             }
         else:
             col_stats = {
@@ -169,7 +175,7 @@ def compute_stats(rows: list[dict], threshold: float = 10.0) -> dict:
                 "p90": None,
                 "p95": None,
                 "p99": None,
-                "threshold": {"value": threshold, "count": 0, "ratio": 0.0},
+                "threshold": {"value": _round3(threshold), "count": 0, "ratio": 0.0},
             }
         stats_by_col[col] = col_stats
 
@@ -190,7 +196,7 @@ def compute_stats(rows: list[dict], threshold: float = 10.0) -> dict:
         ys = [v[1] for v in pair_vals]
         correlations[f"{c1}__{c2}"] = {
             "count": len(pair_vals),
-            "pearson": _pearson_corr(xs, ys),
+            "pearson": _round3(_pearson_corr(xs, ys)),
         }
 
     return {
@@ -348,7 +354,7 @@ def generate_html_report(
     def _fmt_percent_value(v: float | int | None) -> str:
         if v is None:
             return "N/A"
-        return f"{float(v):.6f}%"
+        return f"{float(v):.3f}%"
 
     def _fmt_plain(v: float | int | None) -> str:
         if v is None:
