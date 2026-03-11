@@ -25,6 +25,30 @@
 
 ---
 
+## [0.4.3] - 2026-03-10
+
+### 更新时间
+
+- **日期**：2026-03-10
+
+### 更新原因与概要
+
+- 统一 timing path 抽取与 PT report_timing 生成的实现路径：移除旧版脚本，实现推荐库 `lib` 的多进程解析，并为 PT TCL 生成脚本增加多进程模式。
+
+### 变更
+
+- 移除 `scripts/parse_timing_rpt.py` 及其在 README 中的旧脚本说明，统一推荐使用 `python -m lib` 进行 timing 报告解析。
+- `lib/cli.py` 增加 `-j/--jobs` 参数，支持基于 path 维度的多进程解析（path 数量较少时自动回退为单进程）。
+- `scripts/gen_pt_report_timing.py` 增加 `-j/--jobs` 参数，支持按 path 并行生成 `report_timing` 命令（path 数较少时回退为单进程）。
+
+### 文档
+
+- `README.md`：
+  - 删除旧版 `scripts/parse_timing_rpt.py` 章节。
+  - 标注 `python -m lib` 与 `gen_pt_report_timing.py` 的多进程能力与新参数说明。
+
+---
+
 ## [0.4.1] - 2026-03-10
 
 ### 更新时间

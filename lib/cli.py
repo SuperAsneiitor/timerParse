@@ -3,8 +3,49 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from multiprocessing import Pool, cpu_count
+from typing import Tuple
 
 from . import create_parser, detect_report_format
+from .time_parser_base import ParseOutput, TimeParser
+
+
+def _worker_parse_one(args: tuple[type[TimeParser], int, str]) -> tuple[dict, list, list]:
+    parser_cls, path_id, path_text = args
+    parser = parser_cls()
+    meta, launch, capture = parser.parse_one_path(path_id, path_text)
+    return meta, launch, capture
+
+
+def _parse_with_jobs(
+    parser_impl: TimeParser,
+    report_path: str,
+    jobs: int,
+) -> ParseOutput:
+    blocks = parser_impl.scan_path_blocks(report_path)
+    if not blocks:
+        return ParseOutput([], [], [])
+
+    if jobs <= 0:
+        jobs = max(1, cpu_count() - 1)
+    if jobs == 1 or len(blocks) < 100:
+        return parser_impl.parse_report(report_path)
+
+    parser_cls: type[TimeParser] = parser_impl.__class__  # type: ignore[assignment]
+    args_list: list[tuple[type[TimeParser], int, str]] = [
+        (parser_cls, path_id, path_text) for (path_id, path_text) in blocks
+    ]
+    with Pool(processes=jobs) as pool:
+        results: list[Tuple[dict, list, list]] = pool.map(_worker_parse_one, args_list)
+
+    launch_rows: list[dict] = []
+    capture_rows: list[dict] = []
+    summary_rows: list[dict] = []
+    for meta, launch, capture in results:
+        summary_rows.append(meta)
+        launch_rows.extend(launch)
+        capture_rows.extend(capture)
+    return ParseOutput(launch_rows, capture_rows, summary_rows)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -23,6 +64,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=["auto", "format1", "format2", "pt", "apr"],
         default="auto",
         help="报告格式，默认 auto 自动识别",
+    )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="并行 worker 数，默认 1；path 数较大时可设置为 CPU 核心数以加速解析",
     )
     return parser
 
@@ -47,7 +96,7 @@ def run_cli(argv: list[str] | None = None) -> int:
         print(f"Format: {format_key}")
 
     parser_impl = create_parser(format_key)
-    result = parser_impl.parse_report(rpt_path)
+    result = _parse_with_jobs(parser_impl, rpt_path, jobs=args.jobs)
 
     launch_csv = os.path.join(out_dir, "launch_path.csv")
     capture_csv = os.path.join(out_dir, "capture_path.csv")

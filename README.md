@@ -11,9 +11,8 @@
 | 模块/脚本 | 作用 |
 |------|------|
 | `lib/` | **重构后的解析库**：`TimeParser` 抽象类 + `format1/format2/pt` 三个子类 + CLI |
-| `python -m lib` | 使用新架构解析 Timing 报告并输出 CSV |
-| `scripts/parse_timing_rpt.py` | 旧入口（兼容保留） |
-| `scripts/gen_pt_report_timing.py` | 根据 launch_path CSV 生成 PrimeTime `report_timing` TCL |
+| `python -m lib` | 使用新架构解析 Timing 报告并输出 CSV（支持多进程解析） |
+| `scripts/gen_pt_report_timing.py` | 根据 launch_path CSV 生成 PrimeTime `report_timing` TCL（支持多进程生成） |
 | `scripts/compare_path_summary.py` | 对比两个 path_summary CSV（golden vs test），输出比值结果 |
 
 ---
@@ -106,42 +105,7 @@ python -m unittest tests.test_format1_parser tests.test_format2_parser tests.tes
 
 ---
 
-## 2. 旧脚本用法（兼容保留）
-
-### 输出文件
-
-- **launch_path.csv** / **capture_path.csv**：每条 path 的 launch/capture 路径上各 point 一行，列含 path_id、startpoint、endpoint、时钟、slack、point_index、point 及该格式的属性列（如 Fanout, Cap, Trans, Incr, Path 等）。
-- **path_summary.csv**：每条 path 一行，列为 `path_id, startpoint, endpoint, arrival_time, required_time, slack`（不含 trans/cap）。
-
-### 用法
-
-```bash
-# 指定输入报告与输出目录（格式自动检测）
-python scripts/parse_timing_rpt.py path/to/report.rpt -o path/to/output
-
-# 指定格式
-python scripts/parse_timing_rpt.py report.rpt -o output --format apr   # apr | pt | format2 | auto
-
-# 多进程（path 数 ≥100 时生效）
-python scripts/parse_timing_rpt.py report.rpt -o output -j 4
-
-# 自定义 Point 表指标列名（与报告表头一致）
-python scripts/parse_timing_rpt.py report.rpt -o output --metrics Fanout Cap Trans
-```
-
-### 参数
-
-| 参数 | 说明 |
-|------|------|
-| `input_rpt` | Timing 报告文件路径 |
-| `-o`, `--output` | 输出目录，默认 `output` |
-| `--format` | `apr` / `pt` / `format2` / `auto`（默认） |
-| `-j`, `--jobs` | 并行 worker 数；path 数 &lt; 100 时自动为 1 |
-| `--metrics` | Point 表指标列名，默认 Fanout Cap Trans |
-
----
-
-## 3. 生成 PrimeTime report_timing
+## 2. 生成 PrimeTime report_timing
 
 根据 `launch_path.csv` 生成 PT 的 `report_timing` TCL：通过 `trigger_edge` 决定 through 参数（`r -> -rise_through`，`f -> -fall_through`），net 与虚拟点不写入。若 CSV 无 `trigger_edge` 列，脚本回退到旧规则（按 pin 名判断输出脚）。
 
@@ -163,12 +127,21 @@ python scripts/gen_pt_report_timing.py output/launch_path.csv -o output/report_t
 python scripts/gen_pt_report_timing.py -n 10
 
 # 单行输出、附加参数
-python scripts/gen_pt_report_timing.py --no-wrap -extra "delay_type max"
+python scripts/gen_pt_report_timing.py --no-wrap --extra "delay_type max"
+
+# 多进程生成（path 数较大时提升生成速度，例如使用 4 个 worker）
+python scripts/gen_pt_report_timing.py -j 4
 ```
+
+参数补充：
+
+| 参数 | 说明 |
+|------|------|
+| `-j`, `--jobs` | 多进程 worker 数，默认 1；当 path 数量较大时可提升 TCL 生成速度 |
 
 ---
 
-## 4. 对比 path_summary
+## 3. 对比 path_summary
 
 对比两个 path_summary CSV（golden vs test），按相同 `path_id` 计算 **arrival_time、required_time、slack** 的百分比差值：`(test - golden) / golden * 100%`。
 

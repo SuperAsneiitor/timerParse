@@ -17,6 +17,8 @@ import os
 import re
 import sys
 from collections import defaultdict
+from multiprocessing import Pool, cpu_count
+from typing import Iterable, List, Tuple
 
 
 # Pin names that are outputs (use -fall_through); all others treated as inputs (use -rise_through)
@@ -153,6 +155,29 @@ def format_report_timing(
     return f"# path_id {path_id}\n" + " ".join(parts) + f" >> {output_var_expr}\n"
 
 
+def _worker_build_command(
+    args: tuple[int, list[dict], str, bool, str],
+) -> str:
+    path_id, rows, extra_args, wrap, report_file = args
+    if not rows:
+        return ""
+    start = rows[0]["startpoint"]
+    startpoint_clock = rows[0].get("startpoint_clock", "").strip()
+    endpoint_clock = rows[0].get("endpoint_clock", "").strip()
+    through_list = build_through_args(rows, start)
+    return format_report_timing(
+        path_id,
+        startpoint_clock,
+        endpoint_clock,
+        through_list,
+        extra_args=extra_args,
+        wrap=wrap,
+        startpoint_pin=start,
+        endpoint_pin=rows[0].get("endpoint", ""),
+        output_var_expr="${output_file}",
+    )
+
+
 def main() -> int:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir) if os.path.basename(script_dir) == "scripts" else script_dir
@@ -197,6 +222,14 @@ def main() -> int:
         metavar="RPT",
         help="PT report_timing output report file name used by generated TCL variable output_file",
     )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="多进程生成 report_timing 命令的 worker 数，默认 1；path 数较大时可设置为 CPU 核心数",
+    )
     args = parser.parse_args()
 
     csv_path = os.path.abspath(args.launch_csv)
@@ -220,25 +253,43 @@ def main() -> int:
         "sh touch ${output_file}",
         "",
     ]
-    for pid in path_ids:
-        rows = paths[pid]
-        if not rows:
-            continue
-        start = rows[0]["startpoint"]
-        startpoint_clock = rows[0].get("startpoint_clock", "").strip()
-        endpoint_clock = rows[0].get("endpoint_clock", "").strip()
-        through_list = build_through_args(rows, start)
-        lines.append(format_report_timing(
-            pid,
-            startpoint_clock,
-            endpoint_clock,
-            through_list,
-            extra_args=args.extra,
-            wrap=not args.no_wrap,
-            startpoint_pin=start,
-            endpoint_pin=rows[0].get("endpoint", ""),
-            output_var_expr="${output_file}",
-        ))
+    jobs = args.jobs
+    if jobs <= 0:
+        jobs = max(1, cpu_count() - 1)
+    if len(path_ids) < 100:
+        jobs = 1
+
+    if jobs <= 1:
+        for pid in path_ids:
+            rows = paths[pid]
+            if not rows:
+                continue
+            start = rows[0]["startpoint"]
+            startpoint_clock = rows[0].get("startpoint_clock", "").strip()
+            endpoint_clock = rows[0].get("endpoint_clock", "").strip()
+            through_list = build_through_args(rows, start)
+            lines.append(
+                format_report_timing(
+                    pid,
+                    startpoint_clock,
+                    endpoint_clock,
+                    through_list,
+                    extra_args=args.extra,
+                    wrap=not args.no_wrap,
+                    startpoint_pin=start,
+                    endpoint_pin=rows[0].get("endpoint", ""),
+                    output_var_expr="${output_file}",
+                )
+            )
+    else:
+        worker_args = [
+            (pid, paths[pid], args.extra, not args.no_wrap, args.report_file) for pid in path_ids
+        ]
+        with Pool(processes=jobs) as pool:
+            cmds: List[str] = pool.map(_worker_build_command, worker_args)
+        for cmd in cmds:
+            if cmd:
+                lines.append(cmd)
 
     out_path = os.path.abspath(args.output)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
