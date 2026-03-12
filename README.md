@@ -2,18 +2,150 @@
 
 解析多种 Timing 报告格式，提取每条 path 的 launch/capture 路径点及 path 级汇总，输出 CSV；支持 PrimeTime 报告生成与 path summary 对比。
 
-**仓库中不包含测试数据与测试结果**：`input/` 目录及各类 `output*/` 输出目录已通过 `.gitignore` 排除，上传 GitHub 时不会包含。
+**代码与入口**：所有功能代码位于 `lib/` 目录，**统一入口**为：
+
+```bash
+python -m lib <子命令> [参数...]
+```
+
+**仓库中不包含测试数据与测试结果**：`input/` 及各类 `output*/` 已通过 `.gitignore` 排除。
 
 ---
 
-## 功能概览
+## 功能一览
 
-| 模块/脚本 | 作用 |
+| 功能 | 子命令 | 输入 | 输出 | 处理过程 |
+|------|--------|------|------|----------|
+| **解析 Timing 报告** | `extract` | 单个 timing 报告文件（`.rpt` 等） | `launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv` | 按格式(format1/format2/pt) 切 path → 每 path 解析 launch/capture → 按 startpoint 将 launch 拆成 launch_clock / data_path → 汇总写 CSV；支持 `-j` 多进程 |
+| **生成 PT report_timing** | `gen-pt` | `launch_path.csv`（及可选参数） | `report_timing.tcl`（含 set output_file、rm/touch、若干 report_timing 行并重定向） | 按 path_id 分组 → 每 path 用 trigger_edge 生成 -rise_through/-fall_through → 拼接 TCL；支持 `-j` |
+| **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html` | 按 path_id 对齐 → 算 (test−golden)/golden×100% → 统计（绝对值均值、3 位小数）、阈值、相关性 → 可选画图与 HTML |
+| **生成 Timing 报告** | `gen-report` | YAML 配置文件 | 指定格式的 timing 报告文件（.rpt） | 按 YAML 生成每条 path 的 Title（Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等）与 path 表格；支持固定值、枚举、随机数、模板等取值方式，列顺序可配置 |
+
+`path_summary.csv` 列：path_id, startpoint, endpoint, arrival_time, required_time, slack, launch_clock_point_count, data_path_point_count, capture_point_count, launch_clock_delay, data_path_delay。
+
+---
+
+## 统一入口用法
+
+### 1. 解析 Timing 报告（extract）
+
+```bash
+# 自动识别格式（兼容旧用法：首参数为文件时等价于 extract）
+python -m lib path/to/report.rpt -o path/to/output
+python -m lib extract path/to/report.rpt -o path/to/output
+
+# 显式指定格式
+python -m lib extract path/to/report.rpt --format format1 -o output
+python -m lib extract path/to/report.rpt --format pt -o output
+
+# 多进程解析
+python -m lib extract path/to/report.rpt -o output -j 4
+```
+
+| 参数 | 说明 |
 |------|------|
-| `lib/` | **重构后的解析库**：`TimeParser` 抽象类 + `format1/format2/pt` 三个子类 + CLI |
-| `python -m lib` | 使用新架构解析 Timing 报告并输出 CSV（支持多进程解析） |
-| `scripts/gen_pt_report_timing.py` | 根据 launch_path CSV 生成 PrimeTime `report_timing` TCL（支持多进程生成） |
-| `scripts/compare_path_summary.py` | 对比两个 path_summary CSV（golden vs test），输出比值结果 |
+| `input_rpt` | Timing 报告文件路径 |
+| `-o`, `--output-dir` | 输出目录，默认 `output_lib` |
+| `--format` | `auto` / `format1` / `format2` / `pt` / `apr`（默认 `auto`） |
+| `-j`, `--jobs` | 并行 worker 数，默认 1 |
+
+**输出文件**：`launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv`（含 launch_clock_point_count、data_path_point_count、capture_point_count、launch_clock_delay、data_path_delay）。
+
+---
+
+### 2. 生成 PrimeTime report_timing（gen-pt）
+
+```bash
+python -m lib gen-pt output/launch_path.csv -o output/report_timing.tcl
+python -m lib gen-pt -n 10 --no-wrap --extra "-delay_type max"
+python -m lib gen-pt -j 4
+```
+
+| 参数 | 说明 |
+|------|------|
+| `launch_csv` | launch_path.csv 路径（可选，默认 `output/launch_path.csv`） |
+| `-o`, `--output` | 输出 TCL 路径 |
+| `-n`, `--max-paths` | 仅生成前 N 条 path（0=全部） |
+| `--no-wrap` | 每条 report_timing 单行输出 |
+| `--extra` | 额外 report_timing 参数 |
+| `--report-file` | TCL 中输出文件名变量 |
+| `-j`, `--jobs` | 多进程 worker 数 |
+
+---
+
+### 3. 对比 path_summary（compare）
+
+```bash
+python -m lib compare golden/path_summary.csv test/path_summary.csv -o output/compare_result.csv
+python -m lib compare golden/path_summary.csv test/path_summary.csv -o out.csv --threshold 5 --no-charts --no-html
+```
+
+| 参数 | 说明 |
+|------|------|
+| `golden_file` / `test_file` | Golden / Test path_summary.csv 路径 |
+| `-o`, `--output` | 完整版对比 CSV 路径 |
+| `--threshold` | 阈值统计条件（默认 10%） |
+| `--bins` | 直方图桶数 |
+| `--charts-dir` | 图表目录 |
+| `--no-charts` / `--no-html` | 禁用图表 / HTML 报告 |
+| `--stats-json` / `--stats-csv` | 统计 JSON/CSV 路径 |
+
+**输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`；比值与统计保留 3 位小数，mean 为绝对值均值。
+
+---
+
+### 4. 生成 Timing 报告（gen-report）
+
+通过 YAML 配置生成不同格式的 timing 报告。每条 path 的生成分为两部分：
+
+1. **Path Title**：Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等；可指定属性名、值的类型（固定值、枚举、随机、模板引用）。
+2. **Timing path 表格**：各列属性名与取值配置，列顺序可自定义；可按行类型（clock/pin/net/arrival/slack 等）控制某列是否输出。
+
+```bash
+# 不指定 -o 时会按格式自动写入：
+#   output/gen_format2_timing_report.rpt / output/gen_format1_timing_report.rpt / output/gen_pt_timing_report.rpt
+python -m lib gen-report config/gen_report/format2.yaml
+python -m lib gen-report config/gen_report/format2.yaml --seed 42
+
+# 也可以显式指定输出路径
+python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
+```
+
+| 参数 | 说明 |
+|------|------|
+| `config` | YAML 配置文件路径 |
+| `-o`, `--output` | 输出报告文件路径；不指定时默认 `output/gen_<format>_timing_report.rpt` |
+| `--seed` | 随机种子（可复现生成结果） |
+
+**YAML 配置要点**：
+
+- `format`：`format2` / `format1`（影响 title 与表头排版）。
+- `num_paths`：生成的 path 条数。
+- `path_vars`（可选）：为每条 path 预生成变量，供 title/表格中 `format` 引用，如 `startpoint`、`endpoint`、`clock`。
+- `title.attributes`：列表，每项 `name` + `value`。`value` 支持：
+  - `type: fixed`，`value: "字符串或数字"`
+  - `type: enum`，`choices: [a, b, c]`（可加 `weights`）
+  - `type: format` / `template`，`template: "{startpoint} ( ... )"`（可引用 path_vars 与 title 中已解析字段）
+  - `type: ref`，`ref: 字段名`
+  - `type: random_float`，`min`/`max`/`decimals`
+  - `type: random_int`，`min`/`max`
+- `path_table.column_order`：列名顺序。
+- `path_table.columns`：列名 → `value`（同上类型）+ 可选 `when_type: [clock, pin, net, ...]`（仅在这些行类型下输出该列）。
+- `path_table.row_templates`：launch 段行序列，如 `[{ type: clock, count: 2 }, { type: pin, count: 4 }, { type: arrival, count: 1 }]`。
+- `path_table.capture_row_templates`：capture 段行序列。
+- 特殊：列 `Type` 可用 `value: { type: row_type }` 表示取当前行类型。
+- **point_generator**（可选）：为每条 path 的 launch/capture 每一行生成 point 名，形成完整 timing 路径。配置后：
+  - **startpoint** = launch 段中第一个 pin 行的 point 名，**endpoint** = 最后一个 pin 行的 point 名（无需在 path_vars 里再配 startpoint/endpoint）。
+  - 表格中可用 `{point}` 引用当前行的生成 point 名（如 Description 列）。
+  - 按行类型配置模板，如 `clock`、`net`、`pin`（pin 行可用 `{prefix}`、`{pin_index}`、`{pin_suffix}`（Q/D/Z）、`{pin_index_in_launch}` 等）。
+- **path_table.cumulative_rules**（可选）：属性累加关系，与真实报告一致。format1/pt 默认 `Path: Incr`（Path = cumsum(Incr)），format2 默认 `Time: Delay`（Time = cumsum(Delay)）。可覆盖，如 `cumulative_rules: { Time: Delay }`。
+
+三种格式与真实报告的结构对比、累加关系说明见 **docs/FORMAT_VALIDATION.md**。
+
+三种格式示例配置（各一个）见 `config/gen_report/`：
+- `config/gen_report/format1.yaml`
+- `config/gen_report/format2.yaml`
+- `config/gen_report/pt.yaml`
 
 ---
 
@@ -25,7 +157,7 @@
 | **pt** | PrimeTime 风格，Point 表含 Derate、Incr、Path（无 Location） | `Report : timing` + `Derate` + `Startpoint:` |
 | **format2** | Path Start/Path End + Type–Description 表，含 x-coord/y-coord、Derate | `Path Start` / `Path End` + `slack (VIOLATED/MET)` |
 
-使用 `--format auto` 时会按文件内容自动选择格式。
+使用 `--format auto` 时按文件内容自动选择格式。
 
 ---
 
@@ -35,191 +167,58 @@
 
 - **format1 (APR)**：前 2 行全量；**input_pin / output_pin** → Cap, Trans, Location, Incr, Path, trigger_edge；**net** → Fanout。
 - **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Incr, Path, trigger_edge；**net** → Fanout, Cap。
-- **format2**：前 4 行全量；类型由 Type 列判断，各类型保留属性如下：
-  - **input_pin**：D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, trigger_edge, Description（Time 与 Description 间可有 `/` 或 `\`）。
-  - **output_pin**：Trans, Derate, x-coord, y-coord, Delay, Time, trigger_edge, Description。
-  - **net**：Fanout, Cap, Description（Cap 后可能跟 `xd`）。
-  - **clock**：Delay, Time, Description。
-  - **port**：Trans, x-coord, y-coord, Delay, Time, Description（Time 与 Description 间可有 `/` 或 `\`）。
-  - **constraint**：Delay, Time, Description。
-  - **required**：Time, Description。
-  - **arrival**：Time, Description。
-  - **slack**：Time, Description。
+- **format2**：前 4 行全量；类型由 Type 列判断，各类型保留属性见项目内说明。
 
-Point 类型通过名称判断：含 `(net)` 为 net；pin 名为 Q/Z/ZN/ZP 为 output_pin，否则为 input_pin（format1/pt）；format2 以 Type 列为准。
-
-**trigger_edge 规则**：
-- **format1 / pt**：input/output pin 的 `Path` 最后一列 `r/f` 分别映射为 `trigger_edge=r/f`。
-- **format2**：input/output pin 在 `Time` 与 `Description` 之间若为 ` / ` 则 `trigger_edge=r`，若为 ` \ ` 则 `trigger_edge=f`。
-
-**format1 兼容说明**：点表中 launch/capture 段起始通过 `clock <clock_name> [(rise|fall edge)]` 行识别（有些报告 capture 段可能只有 `clock CORE_CLK`，不带 rise/fall edge）。为避免误把 `clock network delay (propagated)` 等描述行当作段起点，解析器要求 clock 名（及可选 edge 描述）后需直接进入数值列。`clock_name` 不再假设为固定值（例如不固定为 `CPU_CLK`）。Startpoint/Endpoint 括号中的触发沿文本可能为 `rising edge-triggered`、`falling edge-triggered` 或 `falling rising edge-triggered` 等，解析时以 `clocked by <clock>` 为准提取时钟名。
-
-**format2 兼容说明**：若报告中 Derate 列与坐标连写（如 `0.900,0.900{219.156,772.737}`），解析器会自动拆成 Derate 与 x-coord、y-coord，避免坐标误入 Derate 列。pin/port 的 Description 按行内 ` / ` 或 ` \ ` 取整段，避免 point 名被列宽截断。
+**trigger_edge**：format1/pt 从 Path 末列 r/f 映射；format2 从 Time 与 Description 间 ` / ` / ` \ ` 映射为 r/f。
 
 ---
 
-## 1. 重构后推荐用法（lib）
+## lib 目录结构
 
-### 架构说明
+- `lib/parsers/`：三种报告解析实现与基类
+  - `lib/parsers/time_parser_base.py`：`TimeParser`、`ParseOutput`、`split_launch_by_common_pin` 等
+  - `lib/parsers/format1_parser.py` / `format2_parser.py` / `pt_parser.py`
+- `lib/report_gen/`：timing report 生成器（模板基类 + 三种格式子类）
+  - `lib/report_gen/base.py`：`TimingReportTemplate`
+  - `lib/report_gen/format1.py` / `format2.py` / `pt.py`
+- `lib/extract.py`：extract 子命令逻辑（解析 + 写 CSV）
+- `lib/gen_pt_report_timing.py`：gen-pt 子命令逻辑（launch_path → report_timing TCL）
+- `lib/compare_path_summary.py`：compare 子命令逻辑（两个 path_summary 对比与统计）
+- `lib/cli.py`：统一入口与子命令分发；`lib/__main__.py` 调用 `run_cli()`
 
-- `lib/time_parser_base.py`：`TimeParser` 抽象基类（模板方法）。
-- `lib/format1_parser.py`：`Format1Parser`，解析 APR/format1。
-- `lib/format2_parser.py`：`Format2Parser`，解析 Path Start/Path End 风格。
-- `lib/pt_parser.py`：`PtParser`，解析 PT 风格。
-- `lib/cli.py` + `lib/__main__.py`：命令行入口，支持 `python -m lib`。
-- `tests/test_format2_parser.py`：format2 解析与 point 名称、y-coord、Derate 拆分、trigger_edge 的单元/集成测试。
-- `tests/test_format1_parser.py` / `tests/test_pt_parser.py`：format1/pt 解析、clock 识别与 trigger_edge 测试。
-- `tests/test_gen_pt_report_timing.py`：report_timing 转换脚本对 trigger_edge 的参数映射测试。
+兼容性：仍保留 `lib/format1_parser.py` 等旧模块路径作为薄包装转发到 `lib/parsers/`。
 
-### CLI 用法（推荐）
-
-```bash
-# 自动识别格式并解析
-python -m lib path/to/report.rpt -o path/to/output
-
-# 显式指定格式
-python -m lib path/to/report.rpt --format format1 -o output
-python -m lib path/to/report.rpt --format format2 -o output
-python -m lib path/to/report.rpt --format pt -o output
-```
-
-### CLI 参数
-
-| 参数 | 说明 |
-|------|------|
-| `input_rpt` | Timing 报告文件路径 |
-| `-o`, `--output-dir` | 输出目录，默认 `output_lib` |
-| `--format` | `auto` / `format1` / `format2` / `pt` / `apr`（默认 `auto`） |
-
-### 输出文件
-
-- `launch_path.csv`
-- `capture_path.csv`
-- `path_summary.csv`（列为 `path_id,startpoint,endpoint,arrival_time,required_time,slack`）
-
-### 测试
-
-```bash
-python -m unittest tests.test_format1_parser tests.test_format2_parser tests.test_pt_parser tests.test_gen_pt_report_timing -v
-```
+`scripts/` 下保留薄包装脚本，内部调用 `python -m lib <子命令>`，便于旧命令行习惯。
 
 ---
 
-## 2. 生成 PrimeTime report_timing
-
-根据 `launch_path.csv` 生成 PT 的 `report_timing` TCL：通过 `trigger_edge` 决定 through 参数（`r -> -rise_through`，`f -> -fall_through`），net 与虚拟点不写入。若 CSV 无 `trigger_edge` 列，脚本回退到旧规则（按 pin 名判断输出脚）。
-
-脚本会在生成的 tcl 开头加入：
-- `set output_file "report_file.rpt"`
-- `sh rm -rf ${output_file}`
-- `sh touch ${output_file}`
-
-并在每条 `report_timing` 命令末尾追加：`>> ${output_file}`。
+## 测试
 
 ```bash
-# 默认：output/launch_path.csv → output/report_timing.tcl
-python scripts/gen_pt_report_timing.py
-
-# 指定 CSV 与输出 TCL
-python scripts/gen_pt_report_timing.py output/launch_path.csv -o output/report_timing.tcl
-
-# 只生成前 N 条 path
-python scripts/gen_pt_report_timing.py -n 10
-
-# 单行输出、附加参数
-python scripts/gen_pt_report_timing.py --no-wrap --extra "delay_type max"
-
-# 多进程生成（path 数较大时提升生成速度，例如使用 4 个 worker）
-python scripts/gen_pt_report_timing.py -j 4
+python -m unittest tests.test_format1_parser tests.test_format2_parser tests.test_pt_parser tests.test_gen_pt_report_timing tests.test_compare_path_summary -v
 ```
 
-参数补充：
-
-| 参数 | 说明 |
-|------|------|
-| `-j`, `--jobs` | 多进程 worker 数，默认 1；当 path 数量较大时可提升 TCL 生成速度 |
-
----
-
-## 3. 对比 path_summary
-
-对比两个 path_summary CSV（golden vs test），按相同 `path_id` 计算 **arrival_time、required_time、slack** 的百分比差值：`(test - golden) / golden * 100%`。
-
-### 基础用法
+**测试结果统一存放**：所有测试运行产物（extract 输出、compare 结果、gen-report 报告等）建议写入 **test_results/**，并在**文件名或子目录名中带测试时间戳**（如 `test_results/extract_20260310_143022/`）。可用脚本：
 
 ```bash
-# 输出：完整版 compare_result.csv + 简化版 compare_result_simple.csv + compare_stats.json + compare_report.html + charts/
-python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary.csv -o output/compare_result.csv
+python scripts/run_tests_with_timestamp.py extract input/report.rpt
+python scripts/run_tests_with_timestamp.py gen-report config/gen_report/format2.yaml
+python scripts/run_tests_with_timestamp.py compare golden/path_summary.csv test/path_summary.csv
 ```
 
-### 常用参数
-
-| 参数 | 说明 |
-|------|------|
-| `-o`, `--output` | 完整版对比 CSV 输出路径（默认 `<golden_dir>/compare_result.csv`） |
-| `--threshold` | 阈值统计条件 `abs(ratio_percent) > threshold`，默认 `10`（即 10%） |
-| `--bins` | 直方图桶数，默认 `50` |
-| `--charts-dir` | 图表目录，默认 `<output_dir>/charts` |
-| `--no-charts` | 禁用图表输出 |
-| `--no-html` | 禁用 HTML 报告输出 |
-| `--stats-json` | 统计 JSON 输出路径（默认 `<output_dir>/compare_stats.json`） |
-| `--stats-csv` | 可选统计 CSV 输出路径（默认不输出） |
-
-### 输出说明
-
-- `compare_result.csv`：完整版（path_id、startpoint/endpoint、各指标 golden/test/ratio）。
-- `compare_result_simple.csv`：简化版（仅 `path_id` + 三列 ratio）。
-- ratio 与统计数值默认保留 **小数点后 3 位**。
-- `compare_stats.json`：结构化统计结果，包含：
-  - 基础统计：`count/min/max/mean/median/std`
-    - 其中 `mean` 按 `abs(ratio_percent)` 计算（绝对值均值）
-  - 分位数：`p90/p95/p99`
-  - 阈值统计：`abs(ratio_percent) > threshold` 的 `count/ratio`
-  - 相关性：`arrival-required`、`arrival-slack`、`required-slack` 的 Pearson 相关系数
-- `compare_stats.csv`：可选扁平化统计表（仅当指定 `--stats-csv`）。
-- `charts/`：图表目录（默认）：
-  - 直方图 3 张：`hist_arrival_time_ratio.png` / `hist_required_time_ratio.png` / `hist_slack_ratio.png`
-  - 箱线图 1 张：`boxplot_ratios.png`
-  - 散点图 3 张：三组两两组合
-- `compare_report.html`：HTML 汇总报告（输入信息、样本数、统计摘要、阈值摘要、相关性摘要、图表）；统计与阈值单元按百分比（`%`）展示。
-
-### 示例
-
-```bash
-# 自定义阈值、桶数、图表目录，并额外输出 stats CSV
-python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary.csv \
-  -o output/compare_result.csv \
-  --threshold 5 \
-  --bins 80 \
-  --charts-dir output/charts_custom \
-  --stats-csv output/compare_stats.csv
-
-# 仅输出 CSV + stats（不生成图表与 HTML）
-python scripts/compare_path_summary.py golden/path_summary.csv test/path_summary.csv \
-  -o output/compare_result.csv \
-  --no-charts --no-html
-```
+详见 `test_results/README.md`。`test_results/` 已加入 `.gitignore`，仅保留目录说明。
 
 ---
 
 ## 依赖
 
-- Python 3.6+  
-- 可选：`matplotlib`（用于 compare_path_summary 图表；脚本会尝试自动安装）
+- Python 3.6+
+- **gen-report**：`pyyaml`（`pip install pyyaml`）
+- 可选：`matplotlib`（compare 图表；脚本会尝试自动安装）
 
 ---
 
 ## 上传 GitHub 说明
 
-- 测试数据和测试结果**不上传**：`input/` 目录及所有解析/对比输出目录已加入 `.gitignore`。
-- 仓库中仅保留脚本、README 与配置文件；克隆后需自行准备 Timing 报告并指定 `-o` 输出目录运行。
-
-**推送到 master 分支**（不包含测试数据与测试结果，已由 `.gitignore` 排除 `input/`、`output/`、`output_*/`）：
-
-```bash
-git remote add origin https://github.com/<你的用户名>/timerExtract.git   # 仅首次
-git add lib/ scripts/ README.md .gitignore   # 只添加代码与文档，避免 input/output
-git status   # 确认无 input/、output/、output_* 被加入
-git commit -m "feat: lib TimeParser + format1/format2/pt + CLI; docs: format2 type rules"
-git push -u origin master
-```
+- 测试数据和测试结果**不上传**：`input/`、`output/`、`output_*/` 已加入 `.gitignore`。
+- 推送时仅添加代码与文档：`git add lib/ scripts/ README.md .gitignore` 等。

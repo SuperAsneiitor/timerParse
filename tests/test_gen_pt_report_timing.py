@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.gen_pt_report_timing import build_through_args, _classify_point, format_report_timing
+from lib.gen_pt_report_timing import build_through_args, _classify_point, format_report_timing
 
 
 class TestGenPtReportTiming(unittest.TestCase):

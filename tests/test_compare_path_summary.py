@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts import compare_path_summary as cps
+from lib import compare_path_summary as cps
 
 
 class TestComparePathSummary(unittest.TestCase):

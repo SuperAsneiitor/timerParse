@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from .format1_parser import Format1Parser
-from .format2_parser import Format2Parser
-from .pt_parser import PtParser
-from .time_parser_base import ParseOutput, TimeParser
+from .parsers.format1_parser import Format1Parser
+from .parsers.format2_parser import Format2Parser
+from .parsers.pt_parser import PtParser
+from .parsers.time_parser_base import ParseOutput, TimeParser
 
 
 def detect_report_format(peek_text: str) -> str:

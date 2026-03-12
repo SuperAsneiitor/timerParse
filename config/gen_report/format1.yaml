@@ -1,0 +1,71 @@
+# format1(APR) 生成配置（与 input/format_1.timing_report.txt 结构对齐）
+# 用法：
+#   python -m lib gen-report config/gen_report/format1.yaml --seed 1
+format: format1
+num_paths: 1
+
+path_vars:
+  common_pin: { type: fixed, value: "pll_cpu_clk" }
+  scenario: { type: fixed, value: "func_WorstLT_cworst_CCworst_T" }
+  path_group: { type: enum, choices: [REG2REG, REG2CGP] }
+  path_type: { type: enum, choices: [max, min] }
+  clock: { type: fixed, value: "CORECLK" }
+  prefix: { type: format, template: "x_ct_top_0/path_{path_id}" }
+
+point_generator:
+  clock: { template: "clock {clock} (rise edge)" }
+  net: { template: "{prefix}/n{net_index} (net)" }
+  pin: { template: "{prefix}/u{pin_index}/{pin_suffix} (CELL)" } # Q / Z / D
+  arrival: { template: "data arrival time" }
+  required: { template: "data required time" }
+  slack: { template: "slack (VIOLATED)" }
+  default: { template: "" }
+
+title:
+  attributes:
+    - { name: Startpoint, value: { type: format, template: "{startpoint} (falling edge-triggered flip-flop clocked by {clock})" } }
+    - { name: Endpoint, value: { type: format, template: "{endpoint} (rising edge-triggered flip-flop clocked by {clock})" } }
+    - { name: Common Pin, value: { type: ref, ref: common_pin } }
+    - { name: Scenario, value: { type: ref, ref: scenario } }
+    - { name: Path Group, value: { type: ref, ref: path_group } }
+    - { name: Path Type, value: { type: ref, ref: path_type } }
+
+path_table:
+  # format1 表头是 Point + Fanout/Cap/Trans/Location/Incr/Path
+  column_order: [Point, Fanout, Cap, Trans, Location, Incr, Path]
+  columns:
+    Point:
+      value: { type: ref, ref: point }
+    Fanout:
+      value: { type: random_int, min: 1, max: 2000 }
+      when_type: [net]
+    Cap:
+      value: { type: random_float, min: 0.000, max: 0.050, decimals: 3 }
+      when_type: [pin]
+    Trans:
+      value: { type: random_float, min: 0.000, max: 0.100, decimals: 3 }
+      when_type: [pin]
+    Location:
+      value: { type: format, template: "({x},{y})" }
+      when_type: [pin]
+    x: { value: { type: random_float, min: 200, max: 800, decimals: 2 }, when_type: [pin] }
+    y: { value: { type: random_float, min: 600, max: 1100, decimals: 2 }, when_type: [pin] }
+    Incr:
+      value: { type: random_float, min: 0.000, max: 0.060, decimals: 3 }
+      when_type: [clock, pin]
+    Path:
+      value: { type: fixed, value: "" } # 由 cumulative_rules 自动填充（Path=cumsum(Incr)）
+  cumulative_rules: { Path: Incr }
+  row_templates:
+    - { type: clock, count: 1 }
+    - { type: pin, count: 6 }
+    - { type: net, count: 2 }
+    - { type: pin, count: 3 }
+    - { type: arrival, count: 1 }
+  capture_row_templates:
+    - { type: clock, count: 1 }
+    - { type: required, count: 1 }
+    - { type: slack, count: 1 }
+  separator: "---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------"
+  slack_line: false
+

@@ -13,6 +13,8 @@ venv/
 input/
 output/
 output_*/
+test_results/*
+!test_results/README.md
 
 # IDE / OS
 .idea/

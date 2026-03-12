@@ -1,0 +1,64 @@
+# pt(PrimeTime) 生成配置（与 input/pt.timing_report.rpt 结构对齐）
+# 用法：
+#   python -m lib gen-report config/gen_report/pt.yaml --seed 1
+format: pt
+num_paths: 1
+
+path_vars:
+  clock: { type: fixed, value: "clk_hclk" }
+  path_group: { type: enum, choices: [REG2REG] }
+  path_type: { type: enum, choices: [min, max] }
+  prefix: { type: format, template: "u_logic/path_{path_id}" }
+
+point_generator:
+  clock: { template: "clock {clock} (rise edge)" }
+  net: { template: "{prefix}/n{net_index} (net)" }
+  pin: { template: "{prefix}/U{pin_index}/{pin_suffix} (CELL)" } # CK/Q/.../D
+  arrival: { template: "data arrival time" }
+  required: { template: "data required time" }
+  slack: { template: "slack (MET)" }
+  default: { template: "" }
+
+title:
+  attributes:
+    - { name: Startpoint, value: { type: ref, ref: startpoint } }
+    - { name: Endpoint, value: { type: ref, ref: endpoint } }
+    - { name: Path Group, value: { type: ref, ref: path_group } }
+    - { name: Path Type, value: { type: ref, ref: path_type } }
+
+path_table:
+  column_order: [Point, Fanout, Cap, Trans, Derate, Incr, Path]
+  columns:
+    Point: { value: { type: ref, ref: point } }
+    Fanout:
+      value: { type: random_int, min: 1, max: 6 }
+      when_type: [net]
+    Cap:
+      value: { type: random_float, min: 0.000, max: 0.050, decimals: 2 }
+      when_type: [net]
+    Trans:
+      value: { type: random_float, min: 0.00, max: 0.02, decimals: 2 }
+      when_type: [pin]
+    Derate:
+      value: { type: fixed, value: "" }
+      when_type: [pin]
+    Incr:
+      value: { type: random_float, min: 0.00, max: 0.03, decimals: 2 }
+      when_type: [clock, pin]
+    Path:
+      value: { type: fixed, value: "" } # 由 cumulative_rules 自动填充（Path=cumsum(Incr)）
+  cumulative_rules: { Path: Incr }
+  row_templates:
+    - { type: clock, count: 2 }
+    - { type: pin, count: 6 }
+    - { type: net, count: 3 }
+    - { type: pin, count: 2 }
+    - { type: arrival, count: 1 }
+  capture_row_templates:
+    - { type: clock, count: 3 }
+    - { type: pin, count: 1 }
+    - { type: required, count: 1 }
+    - { type: slack, count: 1 }
+  separator: "--------------------------------------------------------------------------------------------------------"
+  slack_line: false
+
