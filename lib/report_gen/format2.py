@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from .base import TimingReportTemplate
+from typing import Any
+
+from .base import TimingReportTemplate, ValueResolver, _str_value
 
 
 class Format2Report(TimingReportTemplate):
@@ -29,4 +31,62 @@ class Format2Report(TimingReportTemplate):
 
     def default_cumulative_rules(self) -> dict[str, str]:
         return {"Time": "Delay"}
+
+    def separator_before_capture_row(self, row_type: str) -> bool:
+        # capture: constraint -> required_path(紧跟) -> 分隔线 -> required/arrival -> 分隔线 -> slack
+        return row_type in ("required", "slack")
+
+    def separator_after_launch(self) -> bool:
+        # launch 与 capture 之间使用空行分隔
+        return False
+
+    def blank_line_between_segments(self) -> bool:
+        return True
+
+    def separator_after_capture(self) -> bool:
+        # slack 后不再加 -=- 分隔线，用空行和下一组 path 分隔
+        return False
+
+    def render_row(self, plan, row_ctx: dict[str, Any], cumulative_targets: set[str], cumulative_sources: set[str]) -> str:
+        # format2: 仅 pin 行使用上升/下降沿符号（/ 或 \）
+        rt = str(row_ctx.get("row_type", "")).strip().lower()
+        point = str(row_ctx.get("point", "") or "").strip()
+        if rt in ("clock_net_delay", "clock_reconv", "clock_uncertainty"):
+            row_ctx["display_type"] = "clock"
+        if rt == "required_path":
+            row_ctx["display_type"] = "required"
+        if rt in ("input_pin", "output_pin", "pin"):
+            row_ctx["description_text"] = f"{row_ctx.get('edge_symbol', '/')} {point}"
+        else:
+            row_ctx["description_text"] = point
+
+        cells: list[str] = []
+        for col in plan.column_order:
+            cfg = plan.columns_config.get(col) or {}
+            when = cfg.get("when_type") or cfg.get("when")
+            row_type = row_ctx.get("row_type", "")
+            if when and row_type and row_type not in when:
+                cells.append("")
+                continue
+
+            if col in cumulative_targets and col in row_ctx:
+                val = row_ctx[col]
+            elif col in cumulative_sources and col in row_ctx:
+                val = row_ctx[col]
+            else:
+                spec = cfg.get("value") or cfg.get("spec") or {}
+                val = ValueResolver.resolve_value(spec, {**row_ctx, "row": row_ctx, "path": row_ctx.get("path") or {}})
+
+            text = _str_value(val)
+            if col == "x-coord" and text:
+                text = "{  " + text
+            elif col == "y-coord" and text:
+                text = text + "}"
+            cells.append(text)
+
+        parts: list[str] = []
+        for i, col in enumerate(plan.column_order):
+            w = int(plan.col_widths.get(col, 16))
+            parts.append((cells[i] if i < len(cells) else "").ljust(w)[:w])
+        return "".join(parts).rstrip()
 

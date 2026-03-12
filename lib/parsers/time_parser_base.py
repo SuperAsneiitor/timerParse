@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -72,9 +73,16 @@ class TimeParser(ABC):
         if not pin:
             return ""
         s = pin.strip()
-        if " (" in s and s.endswith(")"):
-            return s[: s.rfind(" (")].strip()
+        if s.endswith("<-"):
+            s = s[:-2].strip()
+        if " (" in s:
+            s = s.split(" (", 1)[0].strip()
         return s
+
+    @staticmethod
+    def _clean_metric_float(v: float, ndigits: int = 6) -> float:
+        # 消除浮点累计噪声，避免 CSV 中出现 0.39000000000000001 这类显示
+        return round(float(v), ndigits)
 
     @classmethod
     def split_launch_by_common_pin(
@@ -87,15 +95,28 @@ class TimeParser(ABC):
         launch_clock: list[dict[str, Any]] = []
         data_path: list[dict[str, Any]] = []
         found = False
+        output_pin_suffixes = ("/Q", "/Z", "/ZN", "/ZP", "/QN", "/QB")
         for row in launch_rows:
             pt = (row.get("point") or "").strip()
-            if not found and cls._normalize_pin(pt) == target:
+            norm_pt = cls._normalize_pin(pt)
+            # 兼容 PT 原始报告：Startpoint 可能是实例名（如 u_logic/Uu73z4_reg），
+            # 而 launch 点是具体 pin（如 u_logic/Uu73z4_reg/Q）。
+            is_target_row = (
+                norm_pt == target
+                or (target and norm_pt.startswith(target + "/"))
+            )
+            is_startpoint_output = is_target_row and any(norm_pt.endswith(suf) for suf in output_pin_suffixes)
+            if not found and (norm_pt == target or is_startpoint_output):
                 found = True
-                launch_clock.append(row)
+                # startpoint 所在行应归入 data_path（而不是 launch_clock）
+                row["path_type"] = "data_path"
+                data_path.append(row)
                 continue
             if not found:
+                row["path_type"] = "launch_clock"
                 launch_clock.append(row)
             else:
+                row["path_type"] = "data_path"
                 data_path.append(row)
 
         def _sum_delay(rows: list[dict[str, Any]]) -> float:
@@ -105,7 +126,11 @@ class TimeParser(ABC):
                 if val is None:
                     continue
                 try:
-                    total += float(str(val).strip())
+                    s = str(val).strip()
+                    m = re.search(r"-?\d+(?:\.\d+)?", s)
+                    if not m:
+                        continue
+                    total += float(m.group(0))
                 except (ValueError, TypeError):
                     pass
             return total
@@ -131,8 +156,8 @@ class TimeParser(ABC):
             meta["launch_clock_point_count"] = lc_n
             meta["data_path_point_count"] = dp_n
             meta["capture_point_count"] = len(capture)
-            meta["launch_clock_delay"] = lc_delay
-            meta["data_path_delay"] = dp_delay
+            meta["launch_clock_delay"] = self._clean_metric_float(lc_delay)
+            meta["data_path_delay"] = self._clean_metric_float(dp_delay)
             summary_rows.append(meta)
             launch_rows.extend(launch)
             launch_clock_rows.extend(lc)

@@ -2,20 +2,31 @@
 # 用法：
 #   python -m lib gen-report config/gen_report/format1.yaml --seed 1
 format: format1
-num_paths: 1
+num_paths: 100
 
 path_vars:
-  common_pin: { type: fixed, value: "pll_cpu_clk" }
   scenario: { type: fixed, value: "func_WorstLT_cworst_CCworst_T" }
   path_group: { type: enum, choices: [REG2REG, REG2CGP] }
   path_type: { type: enum, choices: [max, min] }
   clock: { type: fixed, value: "CORECLK" }
+  propagated_port: { type: fixed, value: "pll_cpu_clk" }
   prefix: { type: format, template: "x_ct_top_0/path_{path_id}" }
+  launch_clock_groups: { type: random_int, min: 2, max: 9 }
+  data_path_groups: { type: random_int, min: 2, max: 9 }
+  capture_clock_groups: { type: random_int, min: 2, max: 9 }
 
 point_generator:
   clock: { template: "clock {clock} (rise edge)" }
+  clock_net_delay: { template: "clock network delay (propagated)" }
+  port: { template: "{propagated_port}  （propagated)" }
   net: { template: "{prefix}/n{net_index} (net)" }
+  input_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
+  output_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
   pin: { template: "{prefix}/u{pin_index}/{pin_suffix} (CELL)" } # Q / Z / D
+  library_setup: { template: "library setup time" }
+  path_check_period: { template: "path check period" }
+  clock_reconv: { template: "clock reconvergence pessimism" }
+  clock_uncertainty: { template: "clock uncertainty" }
   arrival: { template: "data arrival time" }
   required: { template: "data required time" }
   slack: { template: "slack (VIOLATED)" }
@@ -41,30 +52,38 @@ path_table:
       when_type: [net]
     Cap:
       value: { type: random_float, min: 0.000, max: 0.050, decimals: 3 }
-      when_type: [pin]
+      when_type: [pin, input_pin, output_pin]
     Trans:
       value: { type: random_float, min: 0.000, max: 0.100, decimals: 3 }
-      when_type: [pin]
+      when_type: [pin, input_pin, output_pin]
     Location:
-      value: { type: format, template: "({x},{y})" }
-      when_type: [pin]
-    x: { value: { type: random_float, min: 200, max: 800, decimals: 2 }, when_type: [pin] }
-    y: { value: { type: random_float, min: 600, max: 1100, decimals: 2 }, when_type: [pin] }
+      value: { type: random_coord, x_min: 200, x_max: 800, y_min: 600, y_max: 1100, decimals: 2 }
+      when_type: [pin, input_pin, output_pin]
+    x: { value: { type: random_float, min: 200, max: 800, decimals: 2 }, when_type: [pin, input_pin, output_pin] }
+    y: { value: { type: random_float, min: 600, max: 1100, decimals: 2 }, when_type: [pin, input_pin, output_pin] }
     Incr:
       value: { type: random_float, min: 0.000, max: 0.060, decimals: 3 }
-      when_type: [clock, pin]
+      when_type: [clock, clock_net_delay, pin, input_pin, output_pin, library_setup, path_check_period, clock_reconv, clock_uncertainty]
     Path:
       value: { type: fixed, value: "" } # 由 cumulative_rules 自动填充（Path=cumsum(Incr)）
   cumulative_rules: { Path: Incr }
   row_templates:
     - { type: clock, count: 1 }
-    - { type: pin, count: 6 }
-    - { type: net, count: 2 }
-    - { type: pin, count: 3 }
+    - { type: port, count: 1 }
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: launch_clock_groups } }   # launch clock group
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: data_path_groups } }       # data path group
     - { type: arrival, count: 1 }
   capture_row_templates:
     - { type: clock, count: 1 }
+    - { type: clock_net_delay, count: 1 }
+    - { type: port, count: 1 }
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: capture_clock_groups } }   # capture clock group
+    - { type: path_check_period, count: 1 }
+    - { type: clock_reconv, count: 1 }
+    - { type: clock_uncertainty, count: 1 }
+    - { type: library_setup, count: 1 }
     - { type: required, count: 1 }
+    - { type: arrival, count: 1 }
     - { type: slack, count: 1 }
   separator: "---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------"
   slack_line: false

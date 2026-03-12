@@ -18,7 +18,7 @@ def _desc_to_point(desc: str) -> str:
         s = s.split(" / ", 1)[-1].strip()
     elif " \\ " in s:
         s = s.split(" \\ ", 1)[-1].strip()
-    while s and s[0] in " 0123456789.-":
+    while s and s[0] in " {}0123456789.-":
         s = s[1:].lstrip()
     return s.strip()
 
@@ -95,10 +95,12 @@ class Format2Parser(TimeParser):
 
     _re_path_start = re.compile(r"^\s*Path Start\s+:\s+(.+?)\s+\(\s*flip-flop[^)]*,\s*(\w+)\s*\)\s*$")
     _re_path_end = re.compile(r"^\s*Path End\s+:\s+(.+?)\s+\(\s*flip-flop[^)]*,\s*(\w+)\s*\)\s*$")
-    _re_slack_value = re.compile(r"(-?\d+\.\d+)\s+slack\s+\(")
-    _re_slack_status = re.compile(r"slack\s+\((\w+)\)")
+    _re_slack_value_before = re.compile(r"(-?\d+(?:\.\d+)?)\s+slack\s*\(", re.IGNORECASE)
+    _re_slack_value_after = re.compile(r"slack\s*\(\w+\)\s*[:=]?\s*(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+    _re_slack_status = re.compile(r"slack\s*\((\w+)\)", re.IGNORECASE)
+    _re_slack_line = re.compile(r"slack\s*\((?:violated|met)\)", re.IGNORECASE)
     _re_sep = re.compile(r"^-=+\s*$")
-    _re_data_arrival = re.compile(r"data arrival time")
+    _re_data_arrival = re.compile(r"data arrival time", re.IGNORECASE)
 
     def scan_path_blocks(self, report_path: str) -> list[tuple[int, str]]:
         with open(report_path, "r", encoding="utf-8", errors="replace") as f:
@@ -114,7 +116,7 @@ class Format2Parser(TimeParser):
                 while i < len(lines):
                     if self._re_path_start.match(lines[i]):
                         break
-                    if "slack (VIOLATED)" in lines[i] or "slack (MET)" in lines[i]:
+                    if self._re_slack_line.search(lines[i]):
                         i += 1
                         break
                     i += 1
@@ -152,13 +154,18 @@ class Format2Parser(TimeParser):
                 meta["endpoint"] = m.group(1).strip()
                 meta["endpoint_clock"] = m.group(2).strip()
                 continue
-            if "slack (VIOLATED)" in line or "slack (MET)" in line:
-                vm = self._re_slack_value.search(line)
+            if self._re_slack_line.search(line):
+                vm = self._re_slack_value_before.search(line) or self._re_slack_value_after.search(line)
                 sm = self._re_slack_status.search(line)
                 if vm:
                     meta["slack"] = vm.group(1).strip()
+                else:
+                    # 兜底：取该行最后一个数值
+                    nums = re.findall(r"-?\d+(?:\.\d+)?", line)
+                    if nums:
+                        meta["slack"] = nums[-1]
                 if sm:
-                    meta["slack_status"] = sm.group(1).strip()
+                    meta["slack_status"] = sm.group(1).strip().upper()
                 break
 
         col_pos: dict[str, int] = {}
@@ -190,11 +197,9 @@ class Format2Parser(TimeParser):
 
             if self._re_data_arrival.search(lines[j]):
                 if in_launch:
-                    parts = lines[j].split("data arrival time", 1)
-                    if len(parts) == 2:
-                        tok = parts[0].strip().split()
-                        if tok:
-                            meta["arrival_time"] = tok[-1]
+                    vm = re.search(r"(-?\d+\.\d+)\s+data\s+arrival\s+time", lines[j], re.IGNORECASE)
+                    if vm:
+                        meta["arrival_time"] = vm.group(1).strip()
                 launch_rows.append(self.build_point_row(meta, len(launch_rows) + 1, point, filtered))
                 in_launch = False
                 in_capture = True
@@ -207,12 +212,25 @@ class Format2Parser(TimeParser):
 
         for line in lines:
             if "data required time" in line:
-                parts = line.split("data required time", 1)
-                if len(parts) == 2:
-                    tok = parts[0].strip().split()
-                    if tok:
-                        meta["required_time"] = tok[-1]
+                vm = re.search(r"(-?\d+\.\d+)\s+data\s+required\s+time", line, re.IGNORECASE)
+                if vm:
+                    meta["required_time"] = vm.group(1).strip()
                 break
+
+        if not meta["arrival_time"]:
+            for r in launch_rows:
+                if (r.get("point") or "").strip().lower() == "data arrival time":
+                    t = str(r.get("Time") or "").strip()
+                    if t and t not in ("/", "\\"):
+                        meta["arrival_time"] = t
+                        break
+        if not meta["required_time"]:
+            for r in capture_rows:
+                if (r.get("point") or "").strip().lower() == "data required time":
+                    t = str(r.get("Time") or "").strip()
+                    if t and t not in ("/", "\\"):
+                        meta["required_time"] = t
+                        break
 
         return meta, launch_rows, capture_rows
 
@@ -326,30 +344,80 @@ class Format2Parser(TimeParser):
         out.reverse()
         return out
 
+    def _extract_pin_metrics(self, content: str, is_output: bool) -> tuple[str, str, str, str, str, str, str]:
+        """
+        从完整 pin 行稳健提取:
+        (trans, derate, x, y, d_delay, delay, time)
+        通过坐标块和数值顺序定位，避免把 x/y 坐标误当作 Delay/Time。
+        """
+        trans = ""
+        derate = ""
+        x_val = ""
+        y_val = ""
+        d_delay = ""
+        delay = ""
+        time = ""
+
+        coord_m = re.search(r"\{\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\}", content)
+        prefix = content
+        if coord_m:
+            x_val, y_val = coord_m.group(1), coord_m.group(2)
+            prefix = content[: coord_m.start()] + content[coord_m.end() :]
+
+        derate_m = re.search(r"(\d+(?:\.\d+)?,\d+(?:\.\d+)?)\s*(?:\{|$)", content)
+        if derate_m:
+            derate = derate_m.group(1).strip()
+            prefix = prefix.replace(derate, " ")
+
+        nums = re.findall(r"-?\d+(?:\.\d+)?", prefix)
+        if nums:
+            if is_output:
+                # output_pin 典型数值顺序: Trans, Delay, Time
+                if len(nums) >= 3:
+                    trans, delay, time = nums[-3], nums[-2], nums[-1]
+                elif len(nums) == 2:
+                    delay, time = nums[-2], nums[-1]
+                elif len(nums) == 1:
+                    time = nums[-1]
+            else:
+                # input_pin 典型数值顺序: D-Trans, Trans, D-Delay, Delay, Time
+                if len(nums) >= 5:
+                    trans = nums[-4]
+                    d_delay, delay, time = nums[-3], nums[-2], nums[-1]
+                elif len(nums) >= 3:
+                    delay, time = nums[-2], nums[-1]
+                elif len(nums) == 2:
+                    delay, time = nums[-2], nums[-1]
+                elif len(nums) == 1:
+                    time = nums[-1]
+
+        return trans, derate, x_val, y_val, d_delay, delay, time
+
+    def _is_reasonable_num(self, s: str, max_abs: float = 10.0) -> bool:
+        try:
+            v = float(str(s).strip())
+            return abs(v) <= max_abs
+        except Exception:
+            return False
+
     def _parse_input_pin(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
-        derate_raw = (raw.get("Derate") or "").strip()
-        if "{" in derate_raw:
-            derate_part, x_val, y_val = self._split_derate_and_xy(derate_raw)
-            attrs["Derate"] = derate_part
-            attrs["x-coord"] = x_val
-            attrs["y-coord"] = y_val
-        else:
-            attrs["Derate"] = derate_raw.replace(" ", "")
-            xy_cell = self._xy_cell_from_raw(raw)
-            attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
-            attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
-        attrs["D-Trans"] = (raw.get("D-Trans") or "").strip()
-        attrs["Trans"] = (raw.get("Trans") or "").strip()
+        prefix_area = content[: col_pos["Description"]] if "Description" in col_pos else content
+        trans, derate, x_val, y_val, d_delay, delay, time = self._extract_pin_metrics(prefix_area, is_output=False)
+        attrs["Derate"] = derate or (raw.get("Derate") or "").strip().replace(" ", "")
+        attrs["x-coord"] = x_val or self._parse_xy(self._xy_cell_from_raw(raw), "x-coord")
+        attrs["y-coord"] = y_val or self._parse_xy(self._xy_cell_from_raw(raw), "y-coord")
+        raw_dtrans = (raw.get("D-Trans") or "").strip()
+        raw_trans = (raw.get("Trans") or "").strip()
+        attrs["D-Trans"] = raw_dtrans if self._is_reasonable_num(raw_dtrans, 1.0) else ""
+        attrs["Trans"] = raw_trans if self._is_reasonable_num(raw_trans, 1.0) else trans
         attrs["Type"] = raw.get("Type", "")
-        prefix = content[: col_pos["Description"]].strip()
-        nums = self._last_numeric_tokens(prefix, 3)
-        if len(nums) >= 3:
-            attrs["D-Delay"], attrs["Delay"], attrs["Time"] = nums[0], nums[1], nums[2]
-        elif len(nums) == 2:
-            attrs["Delay"], attrs["Time"] = nums[0], nums[1]
-        elif len(nums) == 1:
-            attrs["Time"] = nums[0]
+        raw_ddelay = (raw.get("D-Delay") or "").strip()
+        raw_delay = (raw.get("Delay") or "").strip()
+        raw_time = (raw.get("Time") or "").strip()
+        attrs["D-Delay"] = raw_ddelay if self._is_reasonable_num(raw_ddelay, 2.0) else d_delay
+        attrs["Delay"] = raw_delay if self._is_reasonable_num(raw_delay, 10.0) else delay
+        attrs["Time"] = raw_time if self._is_reasonable_num(raw_time, 20.0) else time
         attrs["trigger_edge"] = self._trigger_edge_from_line(content)
         desc = self._desc_from_pin_line(content) or self._desc_from_content(content, col_pos)
         point = _desc_to_point(desc)
@@ -358,25 +426,18 @@ class Format2Parser(TimeParser):
 
     def _parse_output_pin(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
-        derate_raw = (raw.get("Derate") or "").strip()
-        if "{" in derate_raw:
-            derate_part, x_val, y_val = self._split_derate_and_xy(derate_raw)
-            attrs["Derate"] = derate_part
-            attrs["x-coord"] = x_val
-            attrs["y-coord"] = y_val
-        else:
-            attrs["Derate"] = derate_raw.replace(" ", "")
-            xy_cell = self._xy_cell_from_raw(raw)
-            attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
-            attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
-        attrs["Trans"] = (raw.get("Trans") or "").strip()
+        prefix_area = content[: col_pos["Description"]] if "Description" in col_pos else content
+        trans, derate, x_val, y_val, _d_delay, delay, time = self._extract_pin_metrics(prefix_area, is_output=True)
+        attrs["Derate"] = derate or (raw.get("Derate") or "").strip().replace(" ", "")
+        attrs["x-coord"] = x_val or self._parse_xy(self._xy_cell_from_raw(raw), "x-coord")
+        attrs["y-coord"] = y_val or self._parse_xy(self._xy_cell_from_raw(raw), "y-coord")
+        raw_trans = (raw.get("Trans") or "").strip()
+        attrs["Trans"] = raw_trans if self._is_reasonable_num(raw_trans, 1.0) else trans
         attrs["Type"] = raw.get("Type", "")
-        prefix = content[: col_pos["Description"]].strip()
-        nums = self._last_numeric_tokens(prefix, 2)
-        if len(nums) >= 2:
-            attrs["Delay"], attrs["Time"] = nums[0], nums[1]
-        elif len(nums) == 1:
-            attrs["Time"] = nums[0]
+        raw_delay = (raw.get("Delay") or "").strip()
+        raw_time = (raw.get("Time") or "").strip()
+        attrs["Delay"] = raw_delay if self._is_reasonable_num(raw_delay, 10.0) else delay
+        attrs["Time"] = raw_time if self._is_reasonable_num(raw_time, 20.0) else time
         attrs["trigger_edge"] = self._trigger_edge_from_line(content)
         desc = self._desc_from_pin_line(content) or self._desc_from_content(content, col_pos)
         point = _desc_to_point(desc)
@@ -426,11 +487,10 @@ class Format2Parser(TimeParser):
             xy_cell = self._xy_cell_from_raw(raw)
             attrs["x-coord"] = self._parse_xy(xy_cell, "x-coord")
             attrs["y-coord"] = self._parse_xy(xy_cell, "y-coord")
+        # port 行通常不携带 Delay/Time，避免把 x/y 坐标误解析为时序值
+        attrs["Delay"] = (raw.get("Delay") or "").strip()
+        attrs["Time"] = (raw.get("Time") or "").strip()
         values, desc = _tail_n_numeric_and_desc(content, 2)
-        if len(values) >= 2:
-            attrs["Delay"], attrs["Time"] = values[0], values[1]
-        elif len(values) == 1:
-            attrs["Time"] = values[0]
         desc = self._desc_from_pin_line(content) or desc
         point = _desc_to_point(desc)
         attrs["Description"] = point

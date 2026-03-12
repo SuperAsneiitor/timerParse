@@ -50,8 +50,8 @@ def parse_with_jobs(
         meta["launch_clock_point_count"] = lc_n
         meta["data_path_point_count"] = dp_n
         meta["capture_point_count"] = len(capture)
-        meta["launch_clock_delay"] = lc_delay
-        meta["data_path_delay"] = dp_delay
+        meta["launch_clock_delay"] = parser_impl._clean_metric_float(lc_delay)
+        meta["data_path_delay"] = parser_impl._clean_metric_float(dp_delay)
         summary_rows.append(meta)
         launch_rows.extend(launch)
         launch_clock_rows.extend(lc)
@@ -92,7 +92,8 @@ def run_extract(args) -> int:
     data_path_csv = os.path.join(out_dir, "data_path.csv")
 
     base_cols = parser_impl.point_base_columns + parser_impl.attrs_order
-    parser_impl.write_csv(launch_csv, result.launch_rows, base_cols)
+    launch_cols = parser_impl.point_base_columns + ["path_type"] + parser_impl.attrs_order
+    parser_impl.write_csv(launch_csv, result.launch_rows, launch_cols)
     parser_impl.write_csv(capture_csv, result.capture_rows, base_cols)
     parser_impl.write_csv(summary_csv, result.summary_rows, parser_impl.summary_columns)
     parser_impl.write_csv(launch_clock_csv, result.launch_clock_rows, base_cols)

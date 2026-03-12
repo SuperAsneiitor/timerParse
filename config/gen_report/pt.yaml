@@ -2,18 +2,28 @@
 # 用法：
 #   python -m lib gen-report config/gen_report/pt.yaml --seed 1
 format: pt
-num_paths: 1
+num_paths: 100
 
 path_vars:
   clock: { type: fixed, value: "clk_hclk" }
   path_group: { type: enum, choices: [REG2REG] }
   path_type: { type: enum, choices: [min, max] }
   prefix: { type: format, template: "u_logic/path_{path_id}" }
+  launch_clock_groups: { type: random_int, min: 2, max: 5 }
+  data_path_groups: { type: random_int, min: 2, max: 9 }
+  capture_groups: { type: random_int, min: 2, max: 9 }
 
 point_generator:
   clock: { template: "clock {clock} (rise edge)" }
+  clock_net_delay: { template: "clock network delay (ideal)" }
+  clock_reconv: { template: "clock reconvergence pessimism" }
+  library_setup: { template: "library hold time" }
+  common_pin: { template: "{common_pin}" }
   net: { template: "{prefix}/n{net_index} (net)" }
-  pin: { template: "{prefix}/U{pin_index}/{pin_suffix} (CELL)" } # CK/Q/.../D
+  input_pin: { template: "{prefix}/U{pin_index}/{pin_name} ({cell_type})" }
+  output_pin: { template: "{prefix}/U{pin_index}/{pin_name} ({cell_type})" }
+  pin: { template: "{prefix}/U{pin_index}/{pin_name} ({cell_type})" }
+  endpoint: { template: "{startpoint_capture_ck}" }
   arrival: { template: "data arrival time" }
   required: { template: "data required time" }
   slack: { template: "slack (MET)" }
@@ -37,28 +47,44 @@ path_table:
       value: { type: random_float, min: 0.000, max: 0.050, decimals: 2 }
       when_type: [net]
     Trans:
-      value: { type: random_float, min: 0.00, max: 0.02, decimals: 2 }
-      when_type: [pin]
+      value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }
+      when_type: [pin, input_pin, output_pin]
     Derate:
-      value: { type: fixed, value: "" }
-      when_type: [pin]
+      value: { type: fixed, value: "1.1000" }
+      when_type: [pin, input_pin, output_pin]
     Incr:
-      value: { type: random_float, min: 0.00, max: 0.03, decimals: 2 }
-      when_type: [clock, pin]
+      value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
+      when_type: [clock, pin, input_pin, output_pin, net, clock_net_delay, clock_reconv, clock_uncertainty, library_setup]
     Path:
       value: { type: fixed, value: "" } # 由 cumulative_rules 自动填充（Path=cumsum(Incr)）
   cumulative_rules: { Path: Incr }
   row_templates:
-    - { type: clock, count: 2 }
-    - { type: pin, count: 6 }
-    - { type: net, count: 3 }
-    - { type: pin, count: 2 }
+    # launch path:
+    #  clock clk_hclk (rise edge)
+    #  clock network delay (ideal)
+    - { type: clock, count: 1 }          # clock clk_hclk (rise edge)
+    - { type: clock_net_delay, count: 1 }# clock network delay (ideal)
+    # 第2部分：launch clock path（以 CK/Q/net 为一组）
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: launch_clock_groups } }  # CK/Q/net 按组循环
+    # 第3部分：data path，多组 (input_pin, output_pin, net)
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: data_path_groups } }      # input/output/net 按组循环
+    # 终点 Endpoint（D）
+    - { type: input_pin, count: 1 }
     - { type: arrival, count: 1 }
   capture_row_templates:
-    - { type: clock, count: 3 }
-    - { type: pin, count: 1 }
+    # capture path:
+    #  clock clk_hclk (rise edge)
+    #  clock network delay (ideal)
+    #  clock reconvergence pessimism
+    - { type: clock, count: 1 }          # clock clk_hclk (rise edge)
+    - { type: clock_net_delay, count: 1 }# clock network delay (ideal)
+    # 第2部分：capture path，多组 (input_pin, output_pin, net)
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: capture_groups } }         # input/output/net 按组循环
+    # 第3部分：capture CK + 在 data required time 之前给出 reconv/uncertainty/setup
+    - { type: endpoint, count: 1 }       # 对齐 raw PT: capture path 中显式 CK 点
+    - { type: clock_reconv, count: 1 }   # clock reconvergence pessimism
+    - { type: library_setup, count: 1 }
     - { type: required, count: 1 }
-    - { type: slack, count: 1 }
   separator: "--------------------------------------------------------------------------------------------------------"
   slack_line: false
 

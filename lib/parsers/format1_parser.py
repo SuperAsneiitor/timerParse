@@ -19,19 +19,19 @@ class Format1Parser(TimeParser):
 
     _output_pin_names = frozenset({"Q", "Z", "ZN", "ZP"})
 
-    _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s+\(.+\)\s*$")
-    _re_endpoint = re.compile(r"^\s+Endpoint:\s+(.+?)\s+\(.+\)\s*$")
+    _re_startpoint = re.compile(r"^\s*Startpoint:\s+(.+?)\s+\(.+\)\s*$")
+    _re_endpoint = re.compile(r"^\s*Endpoint:\s+(.+?)\s+\(.+\)\s*$")
     _re_clocked_by = re.compile(r"clocked by ([^\s)]+)")
-    _re_slack = re.compile(r"^\s+slack\s+\((VIOLATED|MET)\)\s")
+    _re_slack = re.compile(r"^\s*slack\s+\((VIOLATED|MET)\)(?:\s|$)")
     _re_slack_value = re.compile(r"(-?\d+\.\d+)\s*$")
-    _re_point_header = re.compile(r"^\s+Point\s+", re.IGNORECASE)
-    _re_sep_line = re.compile(r"^\s+-{3,}\s*$")
+    _re_point_header = re.compile(r"^\s*Point\s+", re.IGNORECASE)
+    _re_sep_line = re.compile(r"^\s*-{3,}\s*$")
     _re_clock_start = re.compile(
-        r"^\s+clock\s+\S+(?:\s+\((?:rise|fall)\s+edge\))?\s+(?=[-\d])",
+        r"^\s*clock\s+\S+(?:\s+\((?:rise|fall)\s+edge\))?\s+(?=[-\d])",
         re.IGNORECASE,
     )
-    _re_data_arrival = re.compile(r"^\s+data\s+arrival\s+time\s")
-    _re_library_setup = re.compile(r"^\s+library\s+setup\s+time\s")
+    _re_data_arrival = re.compile(r"^\s*data\s+arrival\s+time(?:\s|$)")
+    _re_library_setup = re.compile(r"^\s*library\s+setup\s+time(?:\s|$)")
 
     def scan_path_blocks(self, report_path: str) -> list[tuple[int, str]]:
         with open(report_path, "r", encoding="utf-8", errors="replace") as f:

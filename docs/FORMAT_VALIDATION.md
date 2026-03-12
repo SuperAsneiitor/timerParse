@@ -50,6 +50,15 @@ path_table:
 
 测试结果统一存放于 `test_results/`，文件名或子目录带时间戳（见 test_results/README.md）。
 
+---
+
+## 5. 最近规则更新（2026-03）
+
+- `launch_path.csv` 新增 `path_type` 列：`launch_clock` / `data_path`。
+- `path_summary.csv` 的 `launch_clock_delay`、`data_path_delay` 在写出时做浮点清理，避免超长小数尾巴。
+- PT 解析分段规则增强：当 `Startpoint` 为实例名（如 `u_logic/Uu73z4_reg`）时，能正确匹配到对应 output pin（如 `/Q`）并切分 `data_path`。
+- PT 生成对齐 raw 风格：`clock network delay (ideal)`、capture 段保留关键约束行、`input_pin/output_pin` 的 `Derate` 输出为 4 位小数（例如 `1.1000`）。
+
 ### 推荐命令（不覆盖输出）
 
 ```bash

@@ -16,7 +16,7 @@ python -m lib <子命令> [参数...]
 
 | 功能 | 子命令 | 输入 | 输出 | 处理过程 |
 |------|--------|------|------|----------|
-| **解析 Timing 报告** | `extract` | 单个 timing 报告文件（`.rpt` 等） | `launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv` | 按格式(format1/format2/pt) 切 path → 每 path 解析 launch/capture → 按 startpoint 将 launch 拆成 launch_clock / data_path → 汇总写 CSV；支持 `-j` 多进程 |
+| **解析 Timing 报告** | `extract` | 单个 timing 报告文件（`.rpt` 等） | `launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv` | 按格式(format1/format2/pt) 切 path → 每 path 解析 launch/capture → 按 startpoint 将 launch 拆成 launch_clock / data_path（`launch_path.csv` 含 `path_type`）→ 汇总写 CSV；支持 `-j` 多进程 |
 | **生成 PT report_timing** | `gen-pt` | `launch_path.csv`（及可选参数） | `report_timing.tcl`（含 set output_file、rm/touch、若干 report_timing 行并重定向） | 按 path_id 分组 → 每 path 用 trigger_edge 生成 -rise_through/-fall_through → 拼接 TCL；支持 `-j` |
 | **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html` | 按 path_id 对齐 → 算 (test−golden)/golden×100% → 统计（绝对值均值、3 位小数）、阈值、相关性 → 可选画图与 HTML |
 | **生成 Timing 报告** | `gen-report` | YAML 配置文件 | 指定格式的 timing 报告文件（.rpt） | 按 YAML 生成每条 path 的 Title（Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等）与 path 表格；支持固定值、枚举、随机数、模板等取值方式，列顺序可配置 |
@@ -50,6 +50,9 @@ python -m lib extract path/to/report.rpt -o output -j 4
 | `-j`, `--jobs` | 并行 worker 数，默认 1 |
 
 **输出文件**：`launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv`（含 launch_clock_point_count、data_path_point_count、capture_point_count、launch_clock_delay、data_path_delay）。
+
+- `launch_path.csv` 额外包含 `path_type` 列，值为 `launch_clock` 或 `data_path`。
+- `path_summary.csv` 的 `launch_clock_delay`、`data_path_delay` 写出前会做浮点清理（避免 `0.39000000000000001` 这类显示噪声）。
 
 ---
 
@@ -166,7 +169,7 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 除各格式规定的「前 N 行」保留全部属性外，其余 point 按类型只保留部分列：
 
 - **format1 (APR)**：前 2 行全量；**input_pin / output_pin** → Cap, Trans, Location, Incr, Path, trigger_edge；**net** → Fanout。
-- **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Incr, Path, trigger_edge；**net** → Fanout, Cap。
+- **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Derate, Incr, Path, trigger_edge；**net** → Fanout, Cap。
 - **format2**：前 4 行全量；类型由 Type 列判断，各类型保留属性见项目内说明。
 
 **trigger_edge**：format1/pt 从 Path 末列 r/f 映射；format2 从 Time 与 Description 间 ` / ` / ` \ ` 映射为 r/f。

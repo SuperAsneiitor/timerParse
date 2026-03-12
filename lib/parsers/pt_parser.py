@@ -13,8 +13,8 @@ class PtParser(Format1Parser):
     skip_first_rows = 2
     default_attrs_by_type = {
         "net": ["Fanout", "Cap"],
-        "input_pin": ["Trans", "Incr", "Path", "trigger_edge"],
-        "output_pin": ["Trans", "Incr", "Path", "trigger_edge"],
+        "input_pin": ["Trans", "Derate", "Incr", "Path", "trigger_edge"],
+        "output_pin": ["Trans", "Derate", "Incr", "Path", "trigger_edge"],
     }
 
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")
