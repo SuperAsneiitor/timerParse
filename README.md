@@ -120,11 +120,13 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 | `-o`, `--output` | 输出报告文件路径；不指定时默认 `output/gen_<format>_timing_report.rpt` |
 | `--seed` | 随机种子（可复现生成结果） |
 
-**YAML 配置要点**：
+**YAML 配置要点（base + override）**：
 
 - `format`：`format2` / `format1`（影响 title 与表头排版）。
 - `num_paths`：生成的 path 条数。
-- `path_vars`（可选）：为每条 path 预生成变量，供 title/表格中 `format` 引用，如 `startpoint`、`endpoint`、`clock`。
+- `extends`（可选）：继承基础模板（如 `config/gen_report/base.yaml`）。
+- `variables`（可选）：为每条 path 预生成变量，供 title/表格中 `format` 引用，如 `startpoint`、`endpoint`、`clock`。
+- `row_type_profiles`（可选）：行类型分组，列通过 `profiles` 自动映射到 `when_type`。
 - `title.attributes`：列表，每项 `name` + `value`。`value` 支持：
   - `type: fixed`，`value: "字符串或数字"`
   - `type: enum`，`choices: [a, b, c]`（可加 `weights`）
@@ -132,20 +134,22 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
   - `type: ref`，`ref: 字段名`
   - `type: random_float`，`min`/`max`/`decimals`
   - `type: random_int`，`min`/`max`
-- `path_table.column_order`：列名顺序。
-- `path_table.columns`：列名 → `value`（同上类型）+ 可选 `when_type: [clock, pin, net, ...]`（仅在这些行类型下输出该列）。
-- `path_table.row_templates`：launch 段行序列，如 `[{ type: clock, count: 2 }, { type: pin, count: 4 }, { type: arrival, count: 1 }]`。
-- `path_table.capture_row_templates`：capture 段行序列。
+- `table.column_order`：列名顺序。
+- `table.columns`：列名 → `value`（同上类型）+ 可选 `when_type` 或 `profiles`。
+- `structure.launch`：launch 段行序列，如 `[{ type: clock, count: 2 }, { type: pin, count: 4 }, { type: arrival, count: 1 }]`。
+- `structure.capture`：capture 段行序列。
 - 特殊：列 `Type` 可用 `value: { type: row_type }` 表示取当前行类型。
 - **point_generator**（可选）：为每条 path 的 launch/capture 每一行生成 point 名，形成完整 timing 路径。配置后：
   - **startpoint** = launch 段中第一个 pin 行的 point 名，**endpoint** = 最后一个 pin 行的 point 名（无需在 path_vars 里再配 startpoint/endpoint）。
   - 表格中可用 `{point}` 引用当前行的生成 point 名（如 Description 列）。
   - 按行类型配置模板，如 `clock`、`net`、`pin`（pin 行可用 `{prefix}`、`{pin_index}`、`{pin_suffix}`（Q/D/Z）、`{pin_index_in_launch}` 等）。
-- **path_table.cumulative_rules**（可选）：属性累加关系，与真实报告一致。format1/pt 默认 `Path: Incr`（Path = cumsum(Incr)），format2 默认 `Time: Delay`（Time = cumsum(Delay)）。可覆盖，如 `cumulative_rules: { Time: Delay }`。
+- **table.cumulative_rules**（可选）：属性累加关系。format1/pt 默认 `Path: Incr`，format2 默认 `Time: Delay`。
+- `summary_policy`（可选）：summary 固定行策略（例如 PT 的 `statistical_adjustment` 开关及 Incr/Path 值）。
 
 三种格式与真实报告的结构对比、累加关系说明见 **docs/FORMAT_VALIDATION.md**。
 
-三种格式示例配置（各一个）见 `config/gen_report/`：
+三种格式示例配置见 `config/gen_report/`：
+- `config/gen_report/base.yaml`
 - `config/gen_report/format1.yaml`
 - `config/gen_report/format2.yaml`
 - `config/gen_report/pt.yaml`
@@ -169,7 +173,7 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 除各格式规定的「前 N 行」保留全部属性外，其余 point 按类型只保留部分列：
 
 - **format1 (APR)**：前 2 行全量；**input_pin / output_pin** → Cap, Trans, Location, Incr, Path, trigger_edge；**net** → Fanout。
-- **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Derate, Incr, Path, trigger_edge；**net** → Fanout, Cap。
+- **pt**：前 2 行全量；**input_pin / output_pin** → Trans, Derate, Mean, Sensit, Incr, Path, trigger_edge；**net** → Fanout, Cap。
 - **format2**：前 4 行全量；类型由 Type 列判断，各类型保留属性见项目内说明。
 
 **trigger_edge**：format1/pt 从 Path 末列 r/f 映射；format2 从 Time 与 Description 间 ` / ` / ` \ ` 映射为 r/f。

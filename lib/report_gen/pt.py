@@ -57,6 +57,8 @@ class PtReport(TimingReportTemplate):
             "Cap": 8,
             "Trans": 8,
             "Derate": 10,
+            "Mean": 10,
+            "Sensit": 10,
             "Incr": 10,
             "Path": 10,
         }
@@ -65,10 +67,12 @@ class PtReport(TimingReportTemplate):
     def default_cumulative_rules(self) -> dict[str, str]:
         return {"Path": "Incr"}
 
-    def _render_fixed_row(self, plan, point_text: str, path_text: str = "") -> str:
+    def _render_fixed_row(self, plan, point_text: str, incr_text: str = "", path_text: str = "") -> str:
         cells = {c: "" for c in plan.column_order}
         if "Point" in cells:
             cells["Point"] = point_text
+        if "Incr" in cells:
+            cells["Incr"] = incr_text
         if "Path" in cells:
             cells["Path"] = path_text
         parts = []
@@ -85,13 +89,18 @@ class PtReport(TimingReportTemplate):
     @staticmethod
     def _format_incr(incr_val: object) -> str:
         v = _to_float(incr_val)
-        return f"{v:.2f}"
+        return f"{v:.4f} &"
 
     def generate(self, config: dict, output_path: str, seed: int | None = None) -> None:
         # PT 采用专用流程，严格控制分隔符与 summary 区块位置。
         plan = self.build_render_plan(config)
         title_config = config.get("title", {}).get("attributes") or []
         num_paths = int(config.get("num_paths", 1))
+        summary_policy = config.get("summary_policy") or {}
+        stat_cfg = (summary_policy.get("statistical_adjustment") or {}) if isinstance(summary_policy, dict) else {}
+        stat_enabled = bool(stat_cfg.get("enabled", True))
+        stat_incr = str(stat_cfg.get("incr", "0.00"))
+        stat_path = str(stat_cfg.get("path", "0.00"))
         cumulative_targets = set(plan.cumulative_rules.keys())
         cumulative_sources = set(plan.cumulative_rules.values())
 
@@ -158,7 +167,10 @@ class PtReport(TimingReportTemplate):
                         launch_output_seen = True
                 if rt not in ("arrival", "required", "slack", "endpoint"):
                     if "Incr" in row_ctx:
-                        row_ctx["Incr"] = self._format_incr(row_ctx.get("Incr", 0.0))
+                        if rt in ("input_pin", "output_pin", "pin"):
+                            row_ctx["Incr"] = self._format_incr(row_ctx.get("Incr", 0.0))
+                        else:
+                            row_ctx["Incr"] = f"{_to_float(row_ctx.get('Incr', 0.0)):.2f}"
                     if "Path" in row_ctx and rt in ("input_pin", "output_pin", "pin", "net"):
                         row_ctx["Path"] = self._format_with_edge(row_ctx.get("Path", 0.0), launch_edge)
 
@@ -202,7 +214,10 @@ class PtReport(TimingReportTemplate):
                         capture_output_seen = True
                 if rt not in ("arrival", "required", "slack", "endpoint"):
                     if "Incr" in row_ctx:
-                        row_ctx["Incr"] = self._format_incr(row_ctx.get("Incr", 0.0))
+                        if rt in ("input_pin", "output_pin", "pin"):
+                            row_ctx["Incr"] = self._format_incr(row_ctx.get("Incr", 0.0))
+                        else:
+                            row_ctx["Incr"] = f"{_to_float(row_ctx.get('Incr', 0.0)):.2f}"
                     if "Path" in row_ctx and rt in ("input_pin", "output_pin", "pin", "net", "endpoint"):
                         row_ctx["Path"] = self._format_with_edge(row_ctx.get("Path", 0.0), capture_edge)
 
@@ -217,15 +232,18 @@ class PtReport(TimingReportTemplate):
                 lines.append("  " + plan.separator)
 
             # 按用户模板：先 data arrival time，再 data required time
-            lines.append("  " + self._render_fixed_row(plan, "data required time", f"{required_path_val:.2f}"))
-            lines.append("  " + self._render_fixed_row(plan, "data arrival time", f"{-launch_path_val:.2f}"))
+            lines.append("  " + self._render_fixed_row(plan, "data required time", "", f"{required_path_val:.2f}"))
+            lines.append("  " + self._render_fixed_row(plan, "data arrival time", "", f"{-launch_path_val:.2f}"))
 
             if plan.separator:
                 lines.append("  " + plan.separator)
 
             hold_slack = launch_path_val - required_path_val
             slack_status = "MET" if hold_slack >= 0 else "VIOLATED"
-            lines.append("  " + self._render_fixed_row(plan, f"slack ({slack_status})", f"{hold_slack:.2f}"))
+            # slack 前增加 statistical adjustment 行（可通过 summary_policy 开关）
+            if stat_enabled:
+                lines.append("  " + self._render_fixed_row(plan, "statistical adjustment", stat_incr, stat_path))
+            lines.append("  " + self._render_fixed_row(plan, f"slack ({slack_status})", "", f"{hold_slack:.2f}"))
 
             lines.append("")
             lines.append("")

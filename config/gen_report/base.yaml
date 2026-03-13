@@ -1,0 +1,45 @@
+# 通用基础模板：由各 format 覆盖差异项
+num_paths: 100
+
+variables:
+  launch_clock_groups: { type: random_int, min: 2, max: 9 }
+  data_path_groups: { type: random_int, min: 2, max: 9 }
+  capture_clock_groups: { type: random_int, min: 2, max: 9 }
+
+row_type_profiles:
+  net_rows: [net]
+  pin_rows: [pin, input_pin, output_pin]
+  port_rows: [port]
+  clock_rows: [clock, clock_net_delay, clock_reconv, clock_uncertainty]
+  constraint_rows: [constraint, path_check_period, library_setup]
+  required_rows: [required, required_path]
+  arrival_rows: [arrival]
+  slack_rows: [slack]
+  endpoint_rows: [endpoint]
+
+point_generator:
+  clock: { template: "clock {clock} (rise edge)" }
+  clock_net_delay: { template: "clock source latency" }
+  clock_reconv: { template: "clock reconvergence pessimism" }
+  clock_uncertainty: { template: "clock uncertainty" }
+  port: { template: "dft_clk (in)" }
+  net: { template: "{prefix}/net_{net_index}" }
+  input_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
+  output_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
+  pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
+  arrival: { template: "data arrival time" }
+  required: { template: "data required time" }
+  slack: { template: "slack (VIOLATED)" }
+  default: { template: "" }
+
+table:
+  slack_line: false
+  separator: ""
+  cumulative_rules: {}
+  column_widths: {}
+  column_order: []
+  columns: {}
+
+structure:
+  launch: []
+  capture: []

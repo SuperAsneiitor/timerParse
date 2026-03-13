@@ -1,32 +1,13 @@
-# format2 生成配置（与 input/format_2.timing_report.raw.rpt.txt 结构对齐）
-# 用法：
-#   python -m lib gen-report config/gen_report/format2.yaml --seed 1
+extends: base.yaml
 format: format2
-num_paths: 100
 
-path_vars:
+variables:
   clock: { type: fixed, value: "pll_cpu_clk" }
   prefix: { type: format, template: "x_top/path_{path_id}" }
-  launch_clock_groups: { type: random_int, min: 2, max: 9 }
-  data_path_groups: { type: random_int, min: 2, max: 9 }
-  capture_clock_groups: { type: random_int, min: 2, max: 9 }
 
-# 生成完整 timing 路径（startpoint/endpoint 自动取 launch 段首/末 pin）
 point_generator:
-  clock: { template: "{clock} (rise edge)" }
   clock_net_delay: { template: "clock source latency" }
-  clock_reconv: { template: "clock reconvergence pessimism" }
-  clock_uncertainty: { template: "clock uncertainty" }
-  port: { template: "dft_clk (in)" }
-  net: { template: "{prefix}/net_{net_index}" }
-  input_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
-  output_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
-  pin: { template: "{prefix}/u{pin_index}/{pin_suffix} (CELL)" } # Q / Z / D
-  arrival: { template: "data arrival time" }
-  required: { template: "data required time" }
   required_path: { template: "data required time" }
-  slack: { template: "slack (VIOLATED)" }
-  default: { template: "" }
 
 title:
   attributes:
@@ -37,39 +18,41 @@ title:
     - { name: Group Name, value: { type: enum, choices: [REG2REG, REG2CGP] } }
     - { name: Analysis Type, value: { type: enum, choices: [min, max] } }
 
-path_table:
+table:
+  separator: "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"
+  cumulative_rules: { Time: Delay }
   column_order: [Type, Fanout, Cap, D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description]
   columns:
     Type: { value: { type: ref, ref: display_type } }
-    Fanout: { value: { type: random_int, min: 1, max: 4 }, when_type: [net] }
-    Cap: { value: { type: random_float, min: 0.001, max: 0.01, decimals: 3 }, when_type: [net] }
+    Fanout: { value: { type: random_int, min: 1, max: 4 }, profiles: [net_rows] }
+    Cap: { value: { type: random_float, min: 0.001, max: 0.01, decimals: 3 }, profiles: [net_rows] }
     "D-Trans": { value: { type: fixed, value: "-0.000" }, when_type: [input_pin] }
     Trans: { value: { type: random_float, min: 0.000, max: 0.020, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
-    Derate: { value: { type: fixed, value: "0.900,0.900" }, when_type: [pin, input_pin, output_pin] }
+    Derate: { value: { type: fixed, value: "0.900,0.900" }, profiles: [pin_rows] }
     "x-coord": { value: { type: random_float, min: 200, max: 600, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
     "y-coord": { value: { type: random_float, min: 700, max: 1000, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
     "D-Delay": { value: { type: fixed, value: "-0.000" }, when_type: [input_pin] }
     Delay: { value: { type: random_float, min: 0.000, max: 0.060, decimals: 3 }, when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, pin, input_pin, output_pin, constraint] }
-    Time: { value: { type: fixed, value: "" } } # 由 cumulative_rules 自动填充
+    Time: { value: { type: fixed, value: "" } }
     Description:
       value: { type: ref, ref: description_text }
       when_type: [pin, input_pin, output_pin, port, clock, clock_net_delay, clock_reconv, clock_uncertainty, net, constraint, required_path, required, arrival, slack]
-  # format2：Time = cumsum(Delay)
-  cumulative_rules: { Time: Delay }
-  row_templates:
+
+structure:
+  launch:
     - { type: clock, count: 1 }
     - { type: clock_net_delay, count: 1 }
     - { type: port, count: 1 }
     - { type: net, count: 1 }
-    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: launch_clock_groups } }  # launch clock group
-    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: data_path_groups } }      # data path group
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: launch_clock_groups } }
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: data_path_groups } }
     - { type: arrival, count: 1 }
-  capture_row_templates:
+  capture:
     - { type: clock, count: 1 }
     - { type: clock_net_delay, count: 1 }
     - { type: port, count: 1 }
     - { type: net, count: 1 }
-    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: capture_clock_groups } }  # capture clock group
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: capture_clock_groups } }
     - { type: constraint, count: 1 }
     - { type: clock_reconv, count: 1 }
     - { type: clock_uncertainty, count: 1 }
@@ -77,6 +60,4 @@ path_table:
     - { type: required, count: 1 }
     - { type: arrival, count: 1 }
     - { type: slack, count: 1 }
-  separator: "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"
-  slack_line: false
 

@@ -7,6 +7,26 @@ import sys
 from . import create_parser, detect_report_format
 from .parsers.time_parser_base import ParseOutput, TimeParser
 
+SEMANTIC_POINT_ATTRS = [
+    "Type",
+    "Fanout",
+    "Cap",
+    "D-Trans",
+    "Trans",
+    "Derate",
+    "Mean",
+    "Sensit",
+    "x-coord",
+    "y-coord",
+    "D-Delay",
+    "Delay",
+    "Incr",
+    "Time",
+    "Path",
+    "trigger_edge",
+    "Description",
+]
+
 
 def _worker_parse_one(args: tuple) -> tuple:
     parser_cls, path_id, path_text = args
@@ -91,8 +111,9 @@ def run_extract(args) -> int:
     launch_clock_csv = os.path.join(out_dir, "launch_clock_path.csv")
     data_path_csv = os.path.join(out_dir, "data_path.csv")
 
-    base_cols = parser_impl.point_base_columns + parser_impl.attrs_order
-    launch_cols = parser_impl.point_base_columns + ["path_type"] + parser_impl.attrs_order
+    semantic_attrs = list(dict.fromkeys(SEMANTIC_POINT_ATTRS + (parser_impl.attrs_order or [])))
+    base_cols = parser_impl.point_base_columns + semantic_attrs
+    launch_cols = parser_impl.point_base_columns + ["path_type"] + semantic_attrs
     parser_impl.write_csv(launch_csv, result.launch_rows, launch_cols)
     parser_impl.write_csv(capture_csv, result.capture_rows, base_cols)
     parser_impl.write_csv(summary_csv, result.summary_rows, parser_impl.summary_columns)

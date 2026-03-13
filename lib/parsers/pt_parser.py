@@ -9,12 +9,12 @@ from .format1_parser import Format1Parser
 class PtParser(Format1Parser):
     """PT 报告解析器。"""
 
-    default_attrs_order = ["Fanout", "Cap", "Trans", "Derate", "Incr", "Path", "trigger_edge"]
+    default_attrs_order = ["Fanout", "Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"]
     skip_first_rows = 2
     default_attrs_by_type = {
         "net": ["Fanout", "Cap"],
-        "input_pin": ["Trans", "Derate", "Incr", "Path", "trigger_edge"],
-        "output_pin": ["Trans", "Derate", "Incr", "Path", "trigger_edge"],
+        "input_pin": ["Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"],
+        "output_pin": ["Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"],
     }
 
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")

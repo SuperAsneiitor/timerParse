@@ -51,6 +51,8 @@
 
 ### 2.2 字段展示规则
 
+- `Derate`：pin 行固定 4 位小数（示例 `1.1000`）
+- `Mean` / `Sensit`：非 net 行建议 4 位小数，net 行可留空
 - `Incr` 追加后缀：`&`（例：`0.0453 &`）
 - `Path` 追加边沿标记：`r/f`（例：`0.3528 r`、`0.1882 f`）
 - `slack >= 0` -> `MET`；`slack < 0` -> `VIOLATED`
@@ -81,15 +83,28 @@
 
 ## 4. YAML/生成器落地清单
 
+### 4.1 Schema 组织（base + override）
+
+1. 公共规则放到 `config/gen_report/base.yaml`：  
+   - `variables`  
+   - `row_type_profiles`  
+   - `point_generator` 通用模板  
+2. 各格式只保留差异覆盖（`format1.yaml` / `format2.yaml` / `pt.yaml`）：  
+   - `table.columns` 差异列  
+   - `structure.launch/capture` 差异结构  
+   - `summary_policy` 差异 summary 行
+
+### 4.2 PT 关键落地
+
 1. 在 `point_generator` 中补齐专用 row type：  
    - `clock_net_delay`（文案用 `clock source latency`）  
    - `clock_reconv`、`clock_uncertainty`、`library_setup`  
    - `input_pin`、`output_pin`、`net`、`endpoint`、`common_pin`
-2. `row_templates` / `capture_row_templates` 改成“分段 + 多组”结构，不用单段扁平写法。  
+2. `structure.launch` / `structure.capture` 改成“分段 + 多组”结构，不用单段扁平写法。  
 3. 渲染层做字段后处理：  
    - `Incr` -> `xxxx &`  
    - `Path` -> `xxxx r/f`
-4. summary 区块用固定流程输出，确保分隔符位置稳定。
+4. summary 区块用固定流程输出，确保分隔符位置稳定（`summary_policy` 控制 `statistical adjustment`）。
 
 ---
 
