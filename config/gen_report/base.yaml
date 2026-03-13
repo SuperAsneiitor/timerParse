@@ -7,9 +7,9 @@ variables:
   capture_clock_groups: { type: random_int, min: 2, max: 9 }
 
 row_type_profiles:
-  net_rows: [net]
+  net_rows: [net, port_net]
   pin_rows: [pin, input_pin, output_pin]
-  port_rows: [port]
+  port_rows: [port, port_net]
   clock_rows: [clock, clock_net_delay, clock_reconv, clock_uncertainty]
   constraint_rows: [constraint, path_check_period, library_setup]
   required_rows: [required, required_path]
@@ -23,6 +23,7 @@ point_generator:
   clock_reconv: { template: "clock reconvergence pessimism" }
   clock_uncertainty: { template: "clock uncertainty" }
   port: { template: "dft_clk (in)" }
+  port_net: { template: "dft_clk (net)" }
   net: { template: "{prefix}/net_{net_index}" }
   input_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
   output_pin: { template: "{prefix}/u{pin_index}/{pin_name} ({cell_type})" }
