@@ -1,0 +1,77 @@
+---
+name: timing-validation-flow
+description: Build and execute a fixed timing validation flow for format1/format2/pt reports. Use when the user asks to validate three formats, run end-to-end generation and extraction, or compare format1/format2 against PT as golden.
+---
+
+# Timing Validation Flow
+
+## Scope
+
+Use this skill for standard end-to-end validation in this repo:
+
+1. Generate 3 report formats (`format1`, `format2`, `pt`)
+2. Extract 3 generated reports to CSV
+3. Use PT summary as golden and compare:
+   - `pt` vs `format1`
+   - `pt` vs `format2`
+
+## Required Output Layout
+
+Always write artifacts to a timestamped directory:
+
+- Base: `test_results/`
+- Folder pattern: `test_results/validation_flow_YYYYMMDD_HHMMSS/`
+- Subfolders:
+  - `reports/`
+  - `extract_format1/`
+  - `extract_format2/`
+  - `extract_pt/`
+  - `compare/`
+
+## Standard Commands
+
+Preferred: run one fixed entrypoint from repo root:
+
+```bash
+python scripts/run_validation_flow.py --jobs 4
+```
+
+This script enforces timestamped output and executes the full chain (generate -> extract -> compare).
+
+Manual equivalent (for debugging only):
+
+```bash
+python -m lib gen-report config/gen_report/format1.yaml --seed 101 -o test_results/<ts>/reports/gen_format1.rpt
+python -m lib gen-report config/gen_report/format2.yaml --seed 202 -o test_results/<ts>/reports/gen_format2.rpt
+python -m lib gen-report config/gen_report/pt.yaml      --seed 303 -o test_results/<ts>/reports/gen_pt.rpt
+
+python -m lib extract test_results/<ts>/reports/gen_format1.rpt --format format1 -o test_results/<ts>/extract_format1 -j 4
+python -m lib extract test_results/<ts>/reports/gen_format2.rpt --format format2 -o test_results/<ts>/extract_format2 -j 4
+python -m lib extract test_results/<ts>/reports/gen_pt.rpt      --format pt      -o test_results/<ts>/extract_pt      -j 4
+
+python -m lib compare test_results/<ts>/extract_pt/path_summary.csv test_results/<ts>/extract_format1/path_summary.csv -o test_results/<ts>/compare/pt_vs_format1.csv --stats-json test_results/<ts>/compare/pt_vs_format1_stats.json --no-charts --no-html
+python -m lib compare test_results/<ts>/extract_pt/path_summary.csv test_results/<ts>/extract_format2/path_summary.csv -o test_results/<ts>/compare/pt_vs_format2.csv --stats-json test_results/<ts>/compare/pt_vs_format2_stats.json --no-charts --no-html
+```
+
+## Completion Checklist
+
+- [ ] All 3 generated reports exist in `reports/`
+- [ ] All 3 extract folders contain:
+  - `launch_path.csv`
+  - `capture_path.csv`
+  - `launch_clock_path.csv`
+  - `data_path.csv`
+  - `path_summary.csv`
+- [ ] Compare outputs exist:
+  - `compare/pt_vs_format1.csv`
+  - `compare/pt_vs_format2.csv`
+- [ ] Compare stats JSON files exist
+
+## Reporting Format
+
+When reporting to user, include:
+
+- Base timestamped folder path
+- Row counts for each extract (`launch/capture/summary`)
+- Compare file paths (`pt_vs_format1`, `pt_vs_format2`)
+- Any validation anomalies (if any)

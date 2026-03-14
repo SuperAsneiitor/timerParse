@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.so
+*.egg-info/
+.eggs/
+venv/
+.venv/
+
+# 测试数据与测试结果：不上传
+input/
+output/
+output_*/
+test_results/*
+!test_results/README.md
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

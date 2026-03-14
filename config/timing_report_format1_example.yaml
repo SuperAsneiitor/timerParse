@@ -1,0 +1,65 @@
+# Timing 报告生成配置示例（format1 / PT 风格，简化）
+# 用法: python -m lib gen-report config/timing_report_format1_example.yaml -o output/gen_format1.rpt
+
+format: format1
+num_paths: 1
+
+path_vars:
+  startpoint:
+    type: enum
+    choices: ["inst_a/reg/Q (DFF)", "inst_b/buf/Z (BUF)"]
+  endpoint:
+    type: enum
+    choices: ["inst_c/dat/D (DFF)"]
+  clock:
+    type: fixed
+    value: "CPU_CLK"
+
+title:
+  attributes:
+    - name: Startpoint
+      value: { type: ref, ref: startpoint }
+    - name: Endpoint
+      value: { type: ref, ref: endpoint }
+    - name: Group Name
+      value: { type: enum, choices: [REG2REG] }
+    - name: Analysis Type
+      value: { type: fixed, value: "max" }
+
+path_table:
+  column_order: [Type, Fanout, Cap, Delay, Time, Description]
+  columns:
+    Type:
+      value: { type: row_type }
+    Fanout:
+      value: { type: random_int, min: 1, max: 3 }
+      when_type: [net]
+    Cap:
+      value: { type: random_float, min: 0.001, max: 0.005, decimals: 3 }
+      when_type: [net]
+    Delay:
+      value: { type: random_float, min: 0.01, max: 0.05, decimals: 3 }
+      when_type: [clock, pin]
+    Time:
+      value: { type: random_float, min: 0.02, max: 0.10, decimals: 3 }
+      when_type: [clock, pin]
+    Description:
+      value: { type: format, template: "{startpoint} (CELL)" }
+      when_type: [pin]
+  row_templates:
+    - type: clock
+      count: 1
+    - type: net
+      count: 1
+    - type: pin
+      count: 3
+    - type: arrival
+      count: 1
+  capture_row_templates:
+    - type: clock
+      count: 1
+    - type: required
+      count: 1
+    - type: slack
+      count: 1
+  slack_line: false
