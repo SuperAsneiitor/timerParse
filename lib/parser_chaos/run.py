@@ -13,8 +13,7 @@ from multiprocessing import Process, Queue
 
 from .aggregator import aggregateResults, isResultSentinel
 from .constants import (
-    FORMAT_APR,
-    FORMAT_FORMAT1,
+    FORMAT1,
     FORMAT_FORMAT2,
     FORMAT_PT,
     POINT_BASE_COLUMNS,
@@ -29,14 +28,13 @@ from .worker import runWorkerProcess
 
 # 各格式点表列顺序（用于 CSV 表头）
 _FORMAT_ATTRS = {
-    FORMAT_FORMAT1: FORMAT1_ATTRS,
-    FORMAT_APR: FORMAT1_ATTRS,
+    FORMAT1: FORMAT1_ATTRS,
     FORMAT_PT: PT_ATTRS,
     FORMAT_FORMAT2: ["Type", "Fanout", "Cap", "D-Trans", "Trans", "Derate", "x-coord", "y-coord", "D-Delay", "Delay", "Time", "trigger_edge", "Description"],
 }
 
 # 各格式用于累加延迟的列名（launch_clock/data_path 段求和）
-_DELAY_ATTR = {FORMAT_FORMAT1: "Incr", FORMAT_APR: "Incr", FORMAT_PT: "Incr", FORMAT_FORMAT2: "Delay"}
+_DELAY_ATTR = {FORMAT1: "Incr", FORMAT_PT: "Incr", FORMAT_FORMAT2: "Delay"}
 
 # 任务队列最大长度，避免分割器过快导致内存膨胀
 TASK_QUEUE_MAXSIZE = 256
@@ -66,6 +64,9 @@ def runExtractChaos(
         print(f"Format: {format_key} (auto-detected)")
     else:
         print(f"Format: {format_key}")
+    # apr 与 format1 同一格式，统一为 format1
+    if format_key == "apr":
+        format_key = FORMAT1
 
     task_queue: Queue = Queue(maxsize=TASK_QUEUE_MAXSIZE)
     result_queue: Queue = Queue()
@@ -168,7 +169,7 @@ def detectFormatFromReport(report_path: str) -> str:
     with open(report_path, "r", encoding="utf-8", errors="replace") as f:
         peek = f.read(8192)
     if not peek:
-        return FORMAT_FORMAT1
+        return FORMAT1
     if "Path Start" in peek and "Path End" in peek and (
         "slack (VIOLATED" in peek or "slack (MET)" in peek
     ):
@@ -176,5 +177,5 @@ def detectFormatFromReport(report_path: str) -> str:
     if "Report : timing" in peek and "Derate" in peek and "Startpoint:" in peek:
         return FORMAT_PT
     if "Startpoint:" in peek and ("slack (VIOLATED" in peek or "slack (MET)" in peek):
-        return FORMAT_FORMAT1
-    return FORMAT_FORMAT1
+        return FORMAT1
+    return FORMAT1

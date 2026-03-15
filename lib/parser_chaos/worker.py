@@ -10,7 +10,7 @@ from __future__ import annotations
 from multiprocessing import Queue
 from typing import Any
 
-from .constants import FORMAT_APR, FORMAT_FORMAT1, FORMAT_FORMAT2, FORMAT_PT, RESULT_SENTINEL, TASK_SENTINEL
+from .constants import FORMAT1, FORMAT_FORMAT2, FORMAT_PT, RESULT_SENTINEL, TASK_SENTINEL
 from .parser_format1 import parseOnePath as parseOnePathFormat1
 from .parser_format2 import parseOnePath as parseOnePathFormat2
 from .parser_pt import parseOnePath as parseOnePathPt
@@ -53,7 +53,7 @@ def getParserForFormat(format_key: str):
     返回值为 parseOnePath(path_id, path_text) -> (meta, launch_rows, capture_rows)。
     """
     key = (format_key or "").strip().lower()
-    if key in (FORMAT_FORMAT1, FORMAT_APR):
+    if key == FORMAT1:
         return parseOnePathFormat1
     if key == FORMAT_FORMAT2:
         return parseOnePathFormat2

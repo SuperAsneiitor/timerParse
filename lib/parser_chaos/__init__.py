@@ -11,7 +11,7 @@ parser_chaos：基于「分割器进程 + 解析器 Worker 进程 + 队列」的
 
 from __future__ import annotations
 
-from .constants import FORMAT_APR, FORMAT_FORMAT1, FORMAT_FORMAT2, FORMAT_PT
+from .constants import FORMAT1, FORMAT_FORMAT2, FORMAT_PT
 from .models import ParseOutput
 from .run import detectFormatFromReport, runExtractChaos
 
@@ -19,8 +19,7 @@ __all__ = [
     "runExtractChaos",
     "detectFormatFromReport",
     "ParseOutput",
-    "FORMAT_FORMAT1",
+    "FORMAT1",
     "FORMAT_FORMAT2",
     "FORMAT_PT",
-    "FORMAT_APR",
 ]

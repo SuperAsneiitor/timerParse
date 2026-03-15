@@ -62,7 +62,7 @@ python -m lib extract path/to/report.rpt -o output -j 4
 python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --format auto -j 3
 ```
 
-详见 [docs/parser_chaos.md](docs/parser_chaos.md)。
+详见 [docs/parser_chaos.md](docs/parser_chaos.md)。跨机迁移或恢复会话上下文可参考 [docs/SESSION_MIGRATION.md](docs/SESSION_MIGRATION.md)。
 
 ---
 

@@ -11,7 +11,7 @@ import re
 from multiprocessing import Queue
 from typing import Any
 
-from .constants import FORMAT_APR, FORMAT_FORMAT1, FORMAT_FORMAT2, FORMAT_PT, TASK_SENTINEL
+from .constants import FORMAT1, FORMAT_FORMAT2, FORMAT_PT, TASK_SENTINEL
 
 
 def runSplitterProcess(report_path: str, format_key: str, task_queue: Queue) -> None:
@@ -40,7 +40,7 @@ def splitReportIntoBlocks(report_path: str, format_key: str) -> list[tuple[int, 
     _splitFormat1、_splitFormat2、_splitPt 之一，返回对应格式的 path 块列表。
     """
     key = (format_key or "").strip().lower()
-    if key in (FORMAT_FORMAT1, FORMAT_APR):
+    if key == FORMAT1:
         return _splitFormat1(report_path)
     if key == FORMAT_FORMAT2:
         return _splitFormat2(report_path)

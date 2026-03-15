@@ -6,11 +6,10 @@ parser_chaos 常量与配置。
 """
 from __future__ import annotations
 
-# 支持的报告格式键（与 CLI --format 一致）
-FORMAT_FORMAT1 = "format1"
+# 支持的报告格式键（与 CLI --format 一致）；apr 与 format1 为同一格式，入口处统一为 format1
+FORMAT1 = "format1"
 FORMAT_FORMAT2 = "format2"
 FORMAT_PT = "pt"
-FORMAT_APR = "apr"
 
 # 抽取结果 CSV 中保留的语义列顺序（与格式无关的统一列集合）
 SEMANTIC_POINT_ATTRS = [

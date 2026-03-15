@@ -30,14 +30,14 @@ from lib.parser_chaos import runExtractChaos
 runExtractChaos(report_path, output_dir, format_key="format1", num_workers=3)
 ```
 
-参数与现有 `extract` 子命令类似：`-o` 输出目录，`--format` 为 `auto`/`format1`/`format2`/`pt`/`apr`，`-j` 为解析器 Worker 数量（默认 3）。
+参数与现有 `extract` 子命令类似：`-o` 输出目录，`--format` 为 `auto`/`format1`/`format2`/`pt`/`apr`（其中 `apr` 与 `format1` 为同一格式，内部统一为 format1），`-j` 为解析器 Worker 数量（默认 3）。
 
 ## 目录结构
 
 ```
 lib/parser_chaos/
   __init__.py      # 导出 runExtractChaos、detectFormatFromReport、ParseOutput
-  constants.py     # 格式键、哨兵、列名常量
+  constants.py     # 格式键（FORMAT1/format2/pt）、哨兵、列名常量
   models.py        # ParseOutput 数据类
   utils.py         # normalizePin、cleanMetricFloat、extractColumnPositions、parseFixedWidthAttrs、sumDelayInRows
   splitter.py      # 分割器进程入口与各格式切分逻辑
