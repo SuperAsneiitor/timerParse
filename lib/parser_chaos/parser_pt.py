@@ -7,7 +7,7 @@ parser_chaos PT（PrimeTime）单条 Path 解析器。
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 from .utils import extractColumnPositions, fillUncertainty, parseFixedWidthAttrs
 
@@ -32,6 +32,72 @@ _RE_SEP_LINE = re.compile(r"^\s+-{3,}\s*$")
 _RE_CLOCK_RISE = re.compile(r"^\s+clock\s+\S+\s+\(rise\s+edge\)\s")
 _RE_DATA_ARRIVAL = re.compile(r"^\s+data\s+arrival\s+time\s")
 _RE_LIBRARY_SETUP = re.compile(r"^\s+library\s+(setup|hold)\s+time\s")
+_RE_CLOCK_SOURCE_LAT = re.compile(r"clock source latency", re.IGNORECASE)
+
+
+def _classify_row_kind(point: str, line: str, segment_row_index: int, in_launch: bool) -> str:
+    """
+    根据行内容与推断类型，返回当前点表行的 row_kind：
+    - clock:           launch/capture 段的第一行 clock 行
+    - clock_src_lat:   clock source latency 行
+    - net:             含 (net) 的行
+    - pin:             其余 pin 行
+    其他行返回空串，表示使用原始定宽解析结果。
+    """
+    stripped = line.strip()
+    if _RE_CLOCK_RISE.match(line):
+        # launch/capture 第一行 clock
+        return "clock"
+    if _RE_CLOCK_SOURCE_LAT.search(line):
+        return "clock_src_lat"
+    if "(net)" in point:
+        return "net"
+    # 仅在进入 launch/capture 段后，且非前两行 clock/latency 时，将普通点视为 pin
+    if in_launch and segment_row_index >= 0:
+        return "pin"
+    return ""
+
+
+def _parse_numeric_columns(line: str, col_pos: Dict[str, int], row_kind: str) -> Dict[str, str] | None:
+    """
+    基于 row_kind + 数值 token 顺序解析当前行的数值列。
+
+    若无法可靠映射（无数字或 row_kind 未知），返回 None，调用方应回退到 parseFixedWidthAttrs 的 attrs。
+    """
+    if not row_kind or not col_pos:
+        return None
+    # 预期列顺序映射
+    expected_by_kind: Dict[str, List[str]] = {
+        "clock": ["Mean", "Incr", "Path"],
+        "clock_src_lat": ["Mean", "Sensit", "Incr", "Path"],
+        "net": ["Fanout", "Cap", "Incr", "Path"],
+        "pin": ["Trans", "Derate", "Mean", "Sensit", "Incr", "Path"],
+    }
+    expected = expected_by_kind.get(row_kind)
+    if not expected:
+        return None
+
+    # 估计 point 结束与数值区域起点：以第一列名起点为界，但允许值略微向左漂移
+    first_col = min(col_pos.values())
+    # point 区域近似为 [0, first_col)
+    point_region = line[:first_col]
+    approx_point_end = len(point_region.rstrip("\n"))
+    numeric_start = max(0, min(first_col, approx_point_end + 1))
+    # 允许值比列名左移最多 6 个字符，但不越过 point 区域
+    numeric_start = max(approx_point_end, first_col - 6)
+    numeric_start = max(0, numeric_start)
+
+    numeric_part = line[numeric_start:]
+    tokens_iter = list(re.finditer(r"-?\d+(?:\.\d+)?", numeric_part))
+    if not tokens_iter:
+        return None
+    tokens = [m.group(0) for m in tokens_iter]
+
+    attrs: Dict[str, str] = {name: "" for name in ATTRS_ORDER}
+    limit = min(len(tokens), len(expected))
+    for i in range(limit):
+        attrs[expected[i]] = tokens[i]
+    return attrs
 
 
 def parseOnePath(path_id: int, path_text: str) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -130,14 +196,17 @@ def _parseLaunchSegment(
             continue
         if in_launch and _RE_DATA_ARRIVAL.match(lines[j]):
             for k in range(launch_start_idx, j + 1):
-                point, attrs = parseFixedWidthAttrs(lines[k], col_pos, ATTRS_ORDER)
-                if not point:
+                raw_point, base_attrs = parseFixedWidthAttrs(lines[k], col_pos, ATTRS_ORDER)
+                if not raw_point:
                     continue
-                ptype = _inferPointType(point)
+                row_kind = _classify_row_kind(raw_point, lines[k], k - launch_start_idx, True)
+                smart_attrs = _parse_numeric_columns(lines[k], col_pos, row_kind)
+                attrs = smart_attrs or base_attrs
+                ptype = _inferPointType(raw_point)
                 if ptype in ("input_pin", "output_pin"):
                     attrs = _extractTriggerEdgeFromPath(attrs)
                 filtered = _applyTypeFilter(attrs, ptype, k - launch_start_idx)
-                launch_rows.append(_buildPointRow(meta, len(launch_rows) + 1, point, filtered))
+                launch_rows.append(_buildPointRow(meta, len(launch_rows) + 1, raw_point, filtered))
             vm = re.search(r"(-?\d+\.\d+)\s*$", lines[j])
             if vm:
                 meta["arrival_time"] = vm.group(1).strip()
@@ -165,14 +234,17 @@ def _parseCaptureSegment(
             continue
         if in_capture and _RE_LIBRARY_SETUP.match(lines[j]):
             for k in range(capture_start_idx, j):
-                point, attrs = parseFixedWidthAttrs(lines[k], col_pos, ATTRS_ORDER)
-                if not point:
+                raw_point, base_attrs = parseFixedWidthAttrs(lines[k], col_pos, ATTRS_ORDER)
+                if not raw_point:
                     continue
-                ptype = _inferPointType(point)
+                row_kind = _classify_row_kind(raw_point, lines[k], k - capture_start_idx, True)
+                smart_attrs = _parse_numeric_columns(lines[k], col_pos, row_kind)
+                attrs = smart_attrs or base_attrs
+                ptype = _inferPointType(raw_point)
                 if ptype in ("input_pin", "output_pin"):
                     attrs = _extractTriggerEdgeFromPath(attrs)
                 filtered = _applyTypeFilter(attrs, ptype, k - capture_start_idx)
-                capture_rows.append(_buildPointRow(meta, len(capture_rows) + 1, point, filtered))
+                capture_rows.append(_buildPointRow(meta, len(capture_rows) + 1, raw_point, filtered))
             break
 
 
