@@ -53,6 +53,17 @@ python -m lib compare test_results/<ts>/extract_pt/path_summary.csv test_results
 python -m lib compare test_results/<ts>/extract_pt/path_summary.csv test_results/<ts>/extract_format2/path_summary.csv -o test_results/<ts>/compare/pt_vs_format2.csv --stats-json test_results/<ts>/compare/pt_vs_format2_stats.json --no-charts --no-html
 ```
 
+## Post-Change Validation (Required)
+
+**After every code change** that touches report generation, parsing, or extraction, run the full validation and fix any failures immediately (no need to ask for permission):
+
+```bash
+python scripts/run_validation_flow.py --jobs 4
+```
+
+- If any step fails (gen-report, extract, or compare), fix the code and re-run until the flow completes successfully.
+- Report row counts and compare stats to the user when reporting results.
+
 ## Completion Checklist
 
 - [ ] All 3 generated reports exist in `reports/`

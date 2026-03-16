@@ -23,14 +23,30 @@
 
 ```bash
 # 使用脚本（推荐）
-python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --format auto -j 3
+# 与 lib extract 保持同一输出结构（5 个 CSV）
+python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --format auto -j 4
 
 # 或在代码中调用
 from lib.parser_chaos import runExtractChaos
-runExtractChaos(report_path, output_dir, format_key="format1", num_workers=3)
+runExtractChaos(
+    report_path,
+    output_dir,
+    format_key="format2",  # format1 / format2 / pt / apr
+    num_workers=4,
+)
 ```
 
-参数与现有 `extract` 子命令类似：`-o` 输出目录，`--format` 为 `auto`/`format1`/`format2`/`pt`/`apr`（其中 `apr` 与 `format1` 为同一格式，内部统一为 format1），`-j` 为解析器 Worker 数量（默认 3）。
+参数与现有 `extract` 子命令类似：
+
+- `-o`, `--output-dir`：输出目录；
+- `--format`：`auto` / `format1` / `format2` / `pt` / `apr`（其中 `apr` 与 `format1` 为同一格式，入口会统一映射为 `format1`）；
+- `-j`, `--jobs`：解析器 Worker 数量（默认 3，推荐与本机 CPU 核数接近但略小，例如 4/8）。
+
+脚本会自动：
+
+1. 调用 `detectFormatFromReport`（或使用 `--format` 显式指定）识别格式；
+2. 启动分割器 + N 个 Worker，并在所有 Worker 结束后聚合结果；
+3. 将解析结果写出为与 `python -m lib extract` **完全相同 schema** 的 5 个 CSV 文件。
 
 ## 目录结构
 
@@ -39,10 +55,10 @@ lib/parser_chaos/
   __init__.py      # 导出 runExtractChaos、detectFormatFromReport、ParseOutput
   constants.py     # 格式键（FORMAT1/format2/pt）、哨兵、列名常量
   models.py        # ParseOutput 数据类
-  utils.py         # normalizePin、cleanMetricFloat、extractColumnPositions、parseFixedWidthAttrs、sumDelayInRows
+  utils.py         # normalizePin、cleanMetricFloat、extractColumnPositions、parseFixedWidthAttrs、fillUncertainty、sumDelayInRows
   splitter.py      # 分割器进程入口与各格式切分逻辑
   parser_format1.py # Format1/APR 单条 path 解析
-  parser_format2.py # Format2 单条 path 解析（当前为 meta 最小实现）
+  parser_format2.py # Format2 单条 path 解析（Type/Fanout/Cap/Delay/Time/Description 全量支持）
   parser_pt.py     # PT 单条 path 解析
   worker.py        # 解析器 Worker 进程入口
   aggregator.py    # splitLaunchByCommonPin、aggregateResults
@@ -51,8 +67,45 @@ lib/parser_chaos/
 
 ## 输出文件
 
-与现有 extract 一致：`launch_path.csv`、`capture_path.csv`、`path_summary.csv`、`launch_clock_path.csv`、`data_path.csv`。
+与现有 `python -m lib extract` 一致：会在输出目录生成 5 个 CSV：
+
+- `launch_path.csv`
+- `capture_path.csv`
+- `path_summary.csv`
+- `launch_clock_path.csv`
+- `data_path.csv`
+
+其中：
+
+- `launch_path.csv` 额外包含 `path_type` 列，值为 `launch_clock` / `data_path`，规则与 `lib/parsers` 中 `splitLaunchByCommonPin` 一致（startpoint 所在行为 data_path，其前为 launch_clock）；
+- `path_summary.csv` 列与主解析栈对齐：  
+  `path_id,startpoint,endpoint,arrival_time,required_time,slack,uncertainty,launch_clock_point_count,data_path_point_count,capture_point_count,launch_clock_delay,data_path_delay`；
+- `uncertainty` 列为每条 path 的 **clock uncertainty 数值**，由 path 文本中的 `clock uncertainty` 行提取。
+
+这意味着：对同一输入报告，`lib/extract` 与 `parser_chaos` 的 `path_summary.csv` 可以直接用 `lib compare` 对比。
 
 ## 依赖
 
 与主项目相同：Python 3.9+，无额外第三方依赖（仅标准库 + 项目已有 PyYAML/matplotlib）。
+
+---
+
+## 与验证 Flow 的配合
+
+推荐使用 `scripts/run_validation_flow.py` 作为**统一验证入口**：
+
+```bash
+python scripts/run_validation_flow.py --jobs 4
+```
+
+该脚本会：
+
+1. 通过 `gen-report` 生成 format1/format2/pt 三类报告；
+2. 使用主解析栈（`lib extract`）抽取三类报告；
+3. 以 PT 的 `path_summary` 作为 golden，对 format1/format2 的 `path_summary` 做对比；
+4. 将所有输出写入 `test_results/validation_flow_YYYYMMDD_HHMMSS/` 下的子目录。
+
+在开发/修改 `lib/parser_chaos` 的解析逻辑之后，建议：
+
+1. 先对生成的 format1/format2/pt 报告分别运行一次 `scripts/run_extract_chaos.py`，确认 5 个 CSV 的行数与主解析栈一致；
+2. 再运行 `scripts/run_validation_flow.py --jobs 4`，以 PT 为 golden 检查 path 级差异是否在预期范围内。

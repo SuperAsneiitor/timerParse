@@ -141,9 +141,19 @@ class PtReport(TimingReportTemplate):
             running = {t: 0.0 for t in plan.cumulative_rules}
             launch_edge = "r"
             launch_output_seen = False
+            launch_past_startpoint = False
             for i, row_tmpl in enumerate(launch_rows):
                 row_type = row_tmpl.get("type", "pin")
                 point_name = launch_pts[i] if i < len(launch_pts) else ""
+                rt = str(row_type).strip().lower()
+                # PT: launch path 从 startpoint 的 output pin 开始，每个 point 后加 " <-"
+                if rt == "output_pin" and not launch_output_seen:
+                    launch_past_startpoint = True
+                # 仅 pin 行加 " <-"，net 等不加
+                if launch_past_startpoint and rt in ("input_pin", "output_pin", "pin"):
+                    point_name = (point_name or "").strip()
+                    if point_name:
+                        point_name = point_name + " <-"
                 row_ctx = {**path_ctx, "path": path_ctx, "row_type": row_type, "row_index": i, "point": point_name}
                 for target, source in plan.cumulative_rules.items():
                     src_cfg = plan.columns_config.get(source) or {}
@@ -157,7 +167,6 @@ class PtReport(TimingReportTemplate):
                     row_ctx[target] = round(running[target], 4)
                     row_ctx[source] = incr_val
 
-                rt = str(row_type).strip().lower()
                 if rt in ("arrival",):
                     row_ctx["Path"] = round(running.get("Path", 0.0), 4)
                 if rt in ("output_pin",):

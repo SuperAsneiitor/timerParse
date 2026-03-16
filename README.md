@@ -21,7 +21,7 @@ python -m lib <子命令> [参数...]
 | **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html` | 按 path_id 对齐 → 算 (test−golden)/golden×100% → 统计（绝对值均值、3 位小数）、阈值、相关性 → 可选画图与 HTML |
 | **生成 Timing 报告** | `gen-report` | YAML 配置文件 | 指定格式的 timing 报告文件（.rpt） | 按 YAML 生成每条 path 的 Title（Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等）与 path 表格；支持固定值、枚举、随机数、模板等取值方式，列顺序可配置 |
 
-`path_summary.csv` 列：path_id, startpoint, endpoint, arrival_time, required_time, slack, launch_clock_point_count, data_path_point_count, capture_point_count, launch_clock_delay, data_path_delay。
+`path_summary.csv` 列：`path_id,startpoint,endpoint,arrival_time,required_time,slack,uncertainty,launch_clock_point_count,data_path_point_count,capture_point_count,launch_clock_delay,data_path_delay`。
 
 ---
 
@@ -59,7 +59,7 @@ python -m lib extract path/to/report.rpt -o output -j 4
 另一套**独立实现**位于 `lib/parser_chaos`，采用 1 个报告分割器进程 + N 个解析器 Worker 进程 + 队列的架构，与 `lib/parsers` 无任何引用关系。适合需要「分割与解析分离、动态分配任务」的场景。
 
 ```bash
-python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --format auto -j 3
+python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --format auto -j 4
 ```
 
 详见 [docs/parser_chaos.md](docs/parser_chaos.md)。跨机迁移或恢复会话上下文可参考 [docs/SESSION_MIGRATION.md](docs/SESSION_MIGRATION.md)。

@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .utils import extractColumnPositions, parseFixedWidthAttrs
+from .utils import extractColumnPositions, fillUncertainty, parseFixedWidthAttrs
 
 # Format1 点表列顺序与类型过滤配置
 ATTRS_ORDER = ["Fanout", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"]
@@ -52,6 +52,7 @@ def parseOnePath(path_id: int, path_text: str) -> tuple[dict[str, Any], list[dic
     _parseLaunchSegment(lines, meta, col_pos, table_start, launch_rows)
     _parseCaptureSegment(lines, meta, col_pos, table_start, capture_rows)
     _fillRequiredAndArrival(lines, meta)
+    fillUncertainty(lines, meta)
     return meta, launch_rows, capture_rows
 
 
@@ -67,6 +68,7 @@ def _defaultMeta(path_id: int) -> dict[str, Any]:
         "slack_status": "",
         "arrival_time": "",
         "required_time": "",
+        "uncertainty": "",
     }
 
 

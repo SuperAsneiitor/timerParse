@@ -29,8 +29,8 @@
 | **lib/extract.py** | 原有 extract 入口，调用 parsers |
 | **lib/report_gen/** | 报告生成（YAML → .rpt） |
 | **config/gen_report/** | base.yaml、format1.yaml、format2.yaml、pt.yaml |
-| **scripts/run_extract_chaos.py** | parser_chaos 命令行入口 |
-| **scripts/run_validation_flow.py** | 一键验证 flow（生成 3 格式 → 抽取 → PT 作 golden 对比） |
+| **scripts/run_extract_chaos.py** | parser_chaos 命令行入口（1 分割器 + N Worker + 队列） |
+| **scripts/run_validation_flow.py** | 一键验证 flow（生成 3 格式 → 抽取 → PT 作 golden 对比，`path_summary` 包含 `uncertainty` 等列） |
 | **.cursor/skills/** | timing-path-basics、timing-validation-flow、python-coding-standards |
 
 ---

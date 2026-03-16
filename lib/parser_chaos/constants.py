@@ -53,6 +53,7 @@ SUMMARY_COLUMNS = [
     "arrival_time",
     "required_time",
     "slack",
+    "uncertainty",
     "launch_clock_point_count",
     "data_path_point_count",
     "capture_point_count",

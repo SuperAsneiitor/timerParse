@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .utils import extractColumnPositions, parseFixedWidthAttrs
+from .utils import extractColumnPositions, fillUncertainty, parseFixedWidthAttrs
 
 ATTRS_ORDER = ["Fanout", "Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"]
 SKIP_FIRST_ROWS = 2
@@ -48,6 +48,7 @@ def parseOnePath(path_id: int, path_text: str) -> tuple[dict[str, Any], list[dic
     _parseLaunchSegment(lines, meta, col_pos, table_start, launch_rows)
     _parseCaptureSegment(lines, meta, col_pos, table_start, capture_rows)
     _fillRequiredAndArrival(lines, meta)
+    fillUncertainty(lines, meta)
     return meta, launch_rows, capture_rows
 
 
@@ -63,6 +64,7 @@ def _defaultMeta(path_id: int) -> dict[str, Any]:
         "slack_status": "",
         "arrival_time": "",
         "required_time": "",
+        "uncertainty": "",
     }
 
 
@@ -240,7 +242,7 @@ def _buildPointRow(
     point: str,
     attrs: dict[str, Any],
 ) -> dict[str, Any]:
-    """构建一行点表数据。"""
+    """构建一行点表数据；PT 抽取结果中 Incr 不保留 & 符号。"""
     row = {
         "path_id": meta["path_id"],
         "startpoint": meta["startpoint"],
@@ -254,4 +256,7 @@ def _buildPointRow(
     }
     for name in ATTRS_ORDER:
         row[name] = attrs.get(name, "")
+    incr = row.get("Incr", "")
+    if isinstance(incr, str) and "&" in incr:
+        row["Incr"] = incr.replace("&", "").strip()
     return row

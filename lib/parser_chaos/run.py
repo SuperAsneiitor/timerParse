@@ -73,7 +73,7 @@ def runExtractChaos(
 
     splitter_proc = Process(
         target=runSplitterProcess,
-        args=(report_path, format_key, task_queue),
+        args=(report_path, format_key, task_queue, num_workers),
     )
     splitter_proc.start()
 

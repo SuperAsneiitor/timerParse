@@ -146,6 +146,7 @@ class Format2Parser(TimeParser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
+            "uncertainty": "",
         }
         launch_rows: list[dict[str, Any]] = []
         capture_rows: list[dict[str, Any]] = []
@@ -239,6 +240,7 @@ class Format2Parser(TimeParser):
                         meta["required_time"] = t
                         break
 
+        self._fillUncertainty(lines, meta)
         return meta, launch_rows, capture_rows
 
     def _valuesByColumns(self, content: str, col_pos: dict[str, int]) -> dict[str, str]:

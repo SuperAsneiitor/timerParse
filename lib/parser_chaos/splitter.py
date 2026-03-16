@@ -14,12 +14,14 @@ from typing import Any
 from .constants import FORMAT1, FORMAT_FORMAT2, FORMAT_PT, TASK_SENTINEL
 
 
-def runSplitterProcess(report_path: str, format_key: str, task_queue: Queue) -> None:
+def runSplitterProcess(
+    report_path: str, format_key: str, task_queue: Queue, num_workers: int = 1
+) -> None:
     """
     分割器进程入口：读报告并按格式切分，将 (path_id, path_text) 放入 task_queue。
 
     逻辑：根据 format_key 调用对应格式的切分函数，得到 (path_id, path_text) 列表后
-    依次 put 到 task_queue；最后 put TASK_SENTINEL 表示无更多任务。
+    依次 put 到 task_queue；最后 put num_workers 个 TASK_SENTINEL，使每个 worker 都能结束。
     若读文件或切分异常，将异常 put 到队列后退出，由主进程处理。
     """
     try:
@@ -29,7 +31,8 @@ def runSplitterProcess(report_path: str, format_key: str, task_queue: Queue) -> 
     except Exception as e:
         task_queue.put(e)
     finally:
-        task_queue.put(TASK_SENTINEL)
+        for _ in range(num_workers):
+            task_queue.put(TASK_SENTINEL)
 
 
 def splitReportIntoBlocks(report_path: str, format_key: str) -> list[tuple[int, str]]:
@@ -55,7 +58,7 @@ def _splitFormat1(report_path: str) -> list[tuple[int, str]]:
     """
     with open(report_path, "r", encoding="utf-8", errors="replace") as f:
         lines = f.read().splitlines()
-    re_startpoint = re.compile(r"^\s*Startpoint:\s+(.+?)\s+\(.+\)\s*$")
+    re_startpoint = re.compile(r"^\s*Startpoint:")
     re_slack = re.compile(r"^\s*slack\s+\((VIOLATED|MET)\)(?:\s|$)")
     blocks: list[tuple[int, str]] = []
     i = 0

@@ -24,6 +24,7 @@ title:
   attributes:
     - { name: Startpoint, value: { type: ref, ref: startpoint } }
     - { name: Endpoint, value: { type: ref, ref: endpoint } }
+    - { name: "Last common pin", value: { type: ref, ref: common_pin } }
     - { name: Path Group, value: { type: ref, ref: path_group } }
     - { name: Path Type, value: { type: ref, ref: path_type } }
 

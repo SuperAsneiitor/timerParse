@@ -48,6 +48,7 @@ class PtParser(Format1Parser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
+            "uncertainty": "",
         }
         launch_rows: list[dict[str, Any]] = []
         capture_rows: list[dict[str, Any]] = []
@@ -148,5 +149,20 @@ class PtParser(Format1Parser):
                         meta["arrival_time"] = vm.group(1).strip()
                         break
 
+        self._fillUncertainty(lines, meta)
         return meta, launch_rows, capture_rows
+
+    def buildPointRow(
+        self,
+        meta: dict[str, Any],
+        point_index: int,
+        point: str,
+        attrs: dict[str, Any],
+    ) -> dict[str, Any]:
+        """同基类，且对 PT 抽取结果去掉 Incr 中的 & 符号。"""
+        row = super().buildPointRow(meta, point_index, point, attrs)
+        incr = row.get("Incr", "")
+        if isinstance(incr, str) and "&" in incr:
+            row["Incr"] = incr.replace("&", "").strip()
+        return row
 

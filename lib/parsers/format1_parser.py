@@ -81,6 +81,7 @@ class Format1Parser(TimeParser):
         self._parseLaunchSegment(lines, meta, col_pos, table_start, launch_rows)
         self._parseCaptureSegment(lines, meta, col_pos, table_start, capture_rows)
         self._fillRequiredAndArrival(lines, meta)
+        self._fillUncertainty(lines, meta)
 
         return meta, launch_rows, capture_rows
 
@@ -97,6 +98,7 @@ class Format1Parser(TimeParser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
+            "uncertainty": "",
         }
 
     def _fillMetaFromHeader(self, lines: list[str], meta: dict[str, Any]) -> None:

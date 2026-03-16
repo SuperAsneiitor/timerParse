@@ -83,6 +83,22 @@ def parseFixedWidthAttrs(
     return point, attrs
 
 
+def fillUncertainty(lines: list[str], meta: dict[str, Any]) -> None:
+    """
+    从 path 文本中解析 clock uncertainty 行，将数值写入 meta["uncertainty"]。
+    """
+    key = "clock uncertainty"
+    for line in lines:
+        if key in line.lower():
+            idx = line.lower().find(key)
+            rest = line[idx + len(key) :]
+            m = re.search(r"(-?\d+\.\d+)", rest)
+            if m:
+                meta["uncertainty"] = m.group(1).strip()
+            break
+    meta.setdefault("uncertainty", "")
+
+
 def sumDelayInRows(rows: list[dict[str, Any]], delay_attr: str) -> float:
     """
     对行列表中指定延迟列的数值求和。

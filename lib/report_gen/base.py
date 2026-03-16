@@ -389,11 +389,16 @@ class TimingReportTemplate:
             running: dict[str, float] = {t: 0.0 for t in plan.cumulative_rules}
             edge = "r"
             output_seen = False
+            launch_sep_added = False
             for i, row_tmpl in enumerate(launch_rows):
                 row_type = row_tmpl.get("type", "pin")
                 point_name = launch_pts[i] if i < len(launch_pts) else ""
                 display_type = "pin" if str(row_type).strip().lower() in ("input_pin", "output_pin") else row_type
                 rt = str(row_type).strip().lower()
+                # format2: launch path 中在时钟 pin（第一个 input_pin）前加一行 -= 分隔符
+                if rt == "input_pin" and not launch_sep_added and getattr(self, "format_name", "") == "format2" and plan.separator:
+                    lines.append(plan.separator)
+                    launch_sep_added = True
                 if rt == "output_pin":
                     if output_seen:
                         edge = "f" if edge == "r" else "r"
