@@ -264,19 +264,21 @@ class Format2Parser(TimeParser):
 
     def _descFromPinLine(self, content: str) -> str:
         line = content.strip()
-        if " / " in line:
-            return line.rsplit(" / ", 1)[-1].strip()
-        if " \\ " in line:
-            return line.rsplit(" \\ ", 1)[-1].strip()
+        m = re.search(r"\s[/\\]\s*(.+)$", line)
+        if m:
+            return m.group(1).strip()
         return ""
 
     def _triggerEdgeFromLine(self, content: str) -> str:
         line = content.strip()
-        if " / " in line:
-            return "r"
-        if " \\ " in line:
-            return "f"
+        m = re.search(r"\s([/\\])\s*(?:\S.*)?$", line)
+        if m:
+            return "r" if m.group(1) == "/" else "f"
         return ""
+
+    def _firstNumericFromCell(self, value: str) -> str:
+        m = re.search(r"-?\d+(?:\.\d+)?", str(value or ""))
+        return m.group(0) if m else ""
 
     def _parseLineByType(self, line: str, col_pos: dict[str, int], full_line: str = "") -> tuple[str, dict[str, str], str]:
         content = (full_line or line).rstrip()
@@ -496,11 +498,13 @@ class Format2Parser(TimeParser):
             xy_cell = self._xyCellFromRaw(raw)
             attrs["x-coord"] = self._parseXy(xy_cell, "x-coord")
             attrs["y-coord"] = self._parseXy(xy_cell, "y-coord")
-        raw_delay = (raw.get("Delay") or "").strip()
-        raw_time = (raw.get("Time") or "").strip()
+        raw_delay = self._firstNumericFromCell(raw.get("Delay", ""))
+        raw_time = self._firstNumericFromCell(raw.get("Time", ""))
         values, desc = _tailNNumericAndDesc(content, 2)
         if len(values) >= 2:
             attrs["Delay"], attrs["Time"] = values[0], values[1]
+        elif len(values) == 1:
+            attrs["Delay"], attrs["Time"] = raw_delay, values[0]
         else:
             attrs["Delay"], attrs["Time"] = raw_delay, raw_time
         attrs["trigger_edge"] = self._triggerEdgeFromLine(content)

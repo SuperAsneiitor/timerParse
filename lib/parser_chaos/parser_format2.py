@@ -316,20 +316,23 @@ def _descFromContent(content: str, col_pos: dict[str, int]) -> str:
 
 def _descFromPinLine(content: str) -> str:
     line = content.strip()
-    if " / " in line:
-        return line.rsplit(" / ", 1)[-1].strip()
-    if " \\ " in line:
-        return line.rsplit(" \\ ", 1)[-1].strip()
+    m = re.search(r"\s[/\\]\s*(.+)$", line)
+    if m:
+        return m.group(1).strip()
     return ""
 
 
 def _triggerEdgeFromLine(content: str) -> str:
     line = content.strip()
-    if " / " in line:
-        return "r"
-    if " \\ " in line:
-        return "f"
+    m = re.search(r"\s([/\\])\s*(?:\S.*)?$", line)
+    if m:
+        return "r" if m.group(1) == "/" else "f"
     return ""
+
+
+def _firstNumericFromCell(value: str) -> str:
+    m = re.search(r"-?\d+(?:\.\d+)?", str(value or ""))
+    return m.group(0) if m else ""
 
 
 def _splitDerateAndXy(derate_cell: str) -> tuple[str, str, str]:
@@ -539,11 +542,13 @@ def _parsePort(
         xy_cell = _xyCellFromRaw(raw)
         attrs["x-coord"] = _parseXy(xy_cell, "x-coord")
         attrs["y-coord"] = _parseXy(xy_cell, "y-coord")
-    raw_delay = (raw.get("Delay") or "").strip()
-    raw_time = (raw.get("Time") or "").strip()
+    raw_delay = _firstNumericFromCell(raw.get("Delay", ""))
+    raw_time = _firstNumericFromCell(raw.get("Time", ""))
     values, desc = _tailNNumericAndDesc(content, 2)
     if len(values) >= 2:
         attrs["Delay"], attrs["Time"] = values[0], values[1]
+    elif len(values) == 1:
+        attrs["Delay"], attrs["Time"] = raw_delay, values[0]
     else:
         attrs["Delay"], attrs["Time"] = raw_delay, raw_time
     attrs["trigger_edge"] = _triggerEdgeFromLine(content)
