@@ -82,6 +82,7 @@ table:
 - 新模板 schema 支持 `extends` + `base.yaml` + format override，`row_type_profiles` 可收敛 `when_type` 配置。
 - 新增固定验证脚本 `scripts/run_validation_flow.py`，默认强制时间戳目录输出。
 - PT / Format1 报告的点表解析从「依赖列名起始位置的定宽切分」升级为「按行类型 + 数值 token 顺序补齐关键数值列」，其中 **Incr/Path 等累加相关列只依赖行内数值 token 顺序恢复，不再受列起始位置影响，Cap/Trans/Fanout 仍保留定宽解析结果**，能更稳健地处理列对齐轻微漂移而不影响抽取结果；parser_chaos 与 lib 解析栈在这两种格式上的数值行为保持一致。
+- Format2 解析补强：支持 net 行 `Cap` 后缀 `xd`（如 `0.007 xd`）与 pin 行坐标块 `{ x y }` 共存；`lib` 与 `parser_chaos` 均采用“行类型 + 数值 token 顺序 + 正则提取”的语义解析，并统一跳过表头/分隔线，避免 debug 输出出现列切片撕裂。
 
 ### 推荐命令（不覆盖输出）
 

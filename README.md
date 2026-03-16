@@ -185,6 +185,13 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
   - pin 行映射 `Cap, Trans, Incr, Path`。  
 - 这样可以兼容**列稍有错位**或外部 APR 报告中对齐不完全一致的情况，同时保证 `launch_path.csv` / `capture_path.csv` 中的数值语义与原报告一致。
 
+#### 4.3 Format2 报告的智能解析（含 `xd` 与坐标块）
+
+- Format2 的 net 行允许在 `Cap` 后携带修饰符（如 `0.007 xd`），解析时会按语义提取 `Fanout` 与 `Cap`，`xd` 不参与数值列。  
+- pin 行支持 `Derate` 与坐标块混排（如 `0.900,0.900   {  276.893  820.681}`），解析器会先抽取 `Derate` 与 `{x y}`，再按行类型恢复 `Trans/D-Delay/Delay/Time`。  
+- `lib extract` 与 `parser_chaos` 的 format2 解析规则已对齐为「行类型 + 数值 token 顺序 + 正则提取」，避免把列宽/空格漂移误判成数值截断。  
+- 说明：`test_results/.../debug/launch_path.csv` 现在也输出语义化字段，不再直接 dump 定宽切片结果。
+
 ---
 
 ## 支持的报告格式

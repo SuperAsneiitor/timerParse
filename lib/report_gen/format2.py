@@ -78,6 +78,11 @@ class Format2Report(TimingReportTemplate):
                 val = ValueResolver.resolve_value(spec, {**row_ctx, "row": row_ctx, "path": row_ctx.get("path") or {}})
 
             text = _str_value(val)
+            # net 行在 Cap 后补充 "xd" 关键字，与真实 format2 报告保持一致
+            if col == "Cap":
+                rt = str(row_ctx.get("row_type", "")).strip().lower()
+                if rt == "net" and text:
+                    text = f"{text} xd"
             if col == "x-coord" and text:
                 text = "{  " + text
             elif col == "y-coord" and text:
