@@ -90,6 +90,15 @@ lib/parser_chaos/
 - `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一按 4 位小数写入 CSV；
 - `Incr` 列会去掉原始 PT 报告中的 `&` 符号，仅保留数值部分。
 
+针对 **Format1 (APR) 报告**，parser_chaos 与主解析栈在数值解析上也做了类似的“智能映射”：
+
+- 不再单纯依赖列名起始位置做固定宽度切片来决定 Fanout/Cap/Trans/Incr/Path 的归属；  
+- 会先按行内容判断行为 clock / net / pin，再基于「行类型 + 数值 token 顺序」映射数值列：  
+  - clock 行只映射 `Incr, Path`；  
+  - net 行映射 `Fanout, Cap, Incr, Path`；  
+  - pin 行映射 `Cap, Trans, Incr, Path`。  
+- 这样可以更稳健地处理列间距略有变化或外部 APR 报告中的对齐差异，同时保证与 `lib extract` 输出一致。
+
 ## 依赖
 
 与主项目相同：Python 3.9+，无额外第三方依赖（仅标准库 + 项目已有 PyYAML/matplotlib）。

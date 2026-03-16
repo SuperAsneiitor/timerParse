@@ -1,0 +1,80 @@
+extends: base.yaml
+format: pt
+num_paths: 100000
+
+variables:
+  clock: { type: fixed, value: "clk_hclk" }
+  path_group: { type: enum, choices: [REG2REG] }
+  path_type: { type: enum, choices: [min, max] }
+  prefix: { type: format, template: "u_logic/path_{path_id}" }
+  launch_clock_groups: { type: random_int, min: 2, max: 5 }
+  capture_groups: { type: random_int, min: 2, max: 9 }
+
+point_generator:
+  clock_net_delay: { template: "clock source latency" }
+  clock_uncertainty: { template: "clock uncertainty" }
+  library_setup: { template: "library hold time" }
+  net: { template: "{prefix}/n{net_index} (net)" }
+  input_pin: { template: "{prefix}/U{pin_index}/{pin_name} ({cell_type})" }
+  output_pin: { template: "{prefix}/U{pin_index}/{pin_name} ({cell_type})" }
+  endpoint: { template: "{startpoint_capture_ck}" }
+  stat_adjust: { template: "statistical adjustment" }
+  slack: { template: "slack (MET)" }
+
+title:
+  attributes:
+    - { name: Startpoint, value: { type: ref, ref: startpoint } }
+    - { name: Endpoint, value: { type: ref, ref: endpoint } }
+    - { name: "Last common pin", value: { type: ref, ref: common_pin } }
+    - { name: Path Group, value: { type: ref, ref: path_group } }
+    - { name: Path Type, value: { type: ref, ref: path_type } }
+
+table:
+  separator: "--------------------------------------------------------------------------------------------------------"
+  cumulative_rules: { Path: Incr }
+  column_order: [Point, Fanout, Cap, Trans, Derate, Mean, Sensit, Incr, Path]
+  columns:
+    Point: { value: { type: ref, ref: point } }
+    Fanout: { value: { type: random_int, min: 1, max: 6 }, profiles: [net_rows] }
+    Cap: { value: { type: random_float, min: 0.000, max: 0.050, decimals: 2 }, profiles: [net_rows] }
+    Trans: { value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }, when_type: [pin, input_pin, output_pin, port] }
+    Derate: { value: { type: fixed, value: "1.1000" }, profiles: [pin_rows] }
+    Mean:
+      value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
+      when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint, port]
+    Sensit:
+      value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
+      when_type: [clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint, port]
+    Incr:
+      value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
+      when_type: [clock, pin, input_pin, output_pin, net, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, port]
+    Path: { value: { type: fixed, value: "" } }
+
+summary_policy:
+  statistical_adjustment:
+    enabled: true
+    incr: "0.00"
+    path: "0.00"
+
+structure:
+  launch:
+    - { type: clock, count: 1 }
+    - { type: clock_net_delay, count: 1 }
+    - { type: port, count: 1 }
+    - { type: port_net, count: 1 }
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: launch_clock_groups } }
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: data_path_groups } }
+    - { type: input_pin, count: 1 }
+    - { type: arrival, count: 1 }
+  capture:
+    - { type: clock, count: 1 }
+    - { type: clock_net_delay, count: 1 }
+    - { type: port, count: 1 }
+    - { type: port_net, count: 1 }
+    - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: capture_groups } }
+    - { type: endpoint, count: 1 }
+    - { type: clock_reconv, count: 1 }
+    - { type: clock_uncertainty, count: 1 }
+    - { type: library_setup, count: 1 }
+    - { type: required, count: 1 }
+

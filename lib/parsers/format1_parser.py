@@ -7,7 +7,7 @@ Format1（APR 风格）Timing 报告解析器。
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Dict, List
 
 from .time_parser_base import TimeParser
 
@@ -138,6 +138,68 @@ class Format1Parser(TimeParser):
                 col_pos = {}
         return col_pos, table_start
 
+    def _classify_row_kind(
+        self,
+        point: str,
+        line: str,
+        segment_row_index: int,
+        in_launch: bool,
+    ) -> str:
+        """
+        根据行内容与 point 名粗略分类当前点表行为:
+        - clock: clock 行
+        - net:   含 (net) 的行
+        - pin:   其余 pin 行
+        其他返回空串，表示沿用定宽解析结果。
+        """
+        if self._re_clock_start.match(line):
+            return "clock"
+        if "(net)" in (point or ""):
+            return "net"
+        if in_launch and segment_row_index >= 0:
+            return "pin"
+        return ""
+
+    def _parseNumericColumns(
+        self,
+        line: str,
+        col_pos: dict[str, int],
+        row_kind: str,
+    ) -> Dict[str, str] | None:
+        """
+        基于 row_kind + 数值 token 顺序解析当前行的数值列。
+
+        若无法可靠映射（无数字或 row_kind 未知），返回 None，调用方应回退到 parseFixedWidthAttrs 的 attrs。
+        """
+        if not row_kind or not col_pos:
+            return None
+        expected_by_kind: Dict[str, List[str]] = {
+            "clock": ["Incr", "Path"],
+            "net": ["Fanout", "Cap", "Incr", "Path"],
+            "pin": ["Cap", "Trans", "Incr", "Path"],
+        }
+        expected = expected_by_kind.get(row_kind)
+        if not expected:
+            return None
+
+        # 估算数值区域起点：以第一列名起点为主，允许稍微左移，避免轻微错列
+        first_col = min(col_pos.values())
+        point_region = line[:first_col]
+        approx_point_end = len(point_region.rstrip("\n"))
+        numeric_start = max(approx_point_end, first_col - 6)
+        numeric_start = max(0, numeric_start)
+
+        numeric_part = line[numeric_start:]
+        tokens = re.findall(r"-?\d+(?:\.\d+)?", numeric_part)
+        if not tokens:
+            return None
+
+        attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
+        limit = min(len(tokens), len(expected))
+        for i in range(limit):
+            attrs[expected[i]] = tokens[i]
+        return attrs
+
     def _parseLaunchSegment(
         self,
         lines: list[str],
@@ -150,21 +212,37 @@ class Format1Parser(TimeParser):
         in_launch = False
         launch_start_idx = -1
         for j in range(table_start, len(lines)):
-            if self._re_clock_start.match(lines[j]):
+            line = lines[j]
+            if self._re_clock_start.match(line):
                 in_launch = True
                 launch_start_idx = j
                 continue
-            if in_launch and self._re_data_arrival.match(lines[j]):
+            if in_launch and self._re_data_arrival.match(line):
                 for k in range(launch_start_idx, j + 1):
-                    point, attrs = self.parseFixedWidthAttrs(lines[k], col_pos, self.attrs_order)
-                    if not point:
+                    raw_point, base_attrs = self.parseFixedWidthAttrs(
+                        lines[k], col_pos, self.attrs_order
+                    )
+                    if not raw_point:
                         continue
-                    ptype = self._inferPointType(point)
+                    row_kind = self._classify_row_kind(
+                        raw_point, lines[k], k - launch_start_idx, in_launch=True
+                    )
+                    smart_numeric = self._parseNumericColumns(lines[k], col_pos, row_kind)
+                    attrs = base_attrs.copy()
+                    if smart_numeric:
+                        for col, val in smart_numeric.items():
+                            if val:
+                                attrs[col] = val
+                    ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
                     filtered = self.applyTypeFilter(attrs, ptype, k - launch_start_idx)
-                    launch_rows.append(self.buildPointRow(meta, len(launch_rows) + 1, point, filtered))
-                vm = re.search(r"(-?\d+\.\d+)\s*$", lines[j])
+                    launch_rows.append(
+                        self.buildPointRow(
+                            meta, len(launch_rows) + 1, raw_point, filtered
+                        )
+                    )
+                vm = re.search(r"(-?\d+\.\d+)\s*$", line)
                 if vm:
                     meta["arrival_time"] = vm.group(1).strip()
                 break
@@ -182,23 +260,39 @@ class Format1Parser(TimeParser):
         in_capture = False
         capture_start_idx = -1
         for j in range(table_start, len(lines)):
-            if self._re_data_arrival.match(lines[j]):
+            line = lines[j]
+            if self._re_data_arrival.match(line):
                 after_data_arrival = True
                 continue
-            if after_data_arrival and self._re_clock_start.match(lines[j]):
+            if after_data_arrival and self._re_clock_start.match(line):
                 in_capture = True
                 capture_start_idx = j
                 continue
-            if in_capture and self._re_library_setup.match(lines[j]):
+            if in_capture and self._re_library_setup.match(line):
                 for k in range(capture_start_idx, j):
-                    point, attrs = self.parseFixedWidthAttrs(lines[k], col_pos, self.attrs_order)
-                    if not point:
+                    raw_point, base_attrs = self.parseFixedWidthAttrs(
+                        lines[k], col_pos, self.attrs_order
+                    )
+                    if not raw_point:
                         continue
-                    ptype = self._inferPointType(point)
+                    row_kind = self._classify_row_kind(
+                        raw_point, lines[k], k - capture_start_idx, in_launch=False
+                    )
+                    smart_numeric = self._parseNumericColumns(lines[k], col_pos, row_kind)
+                    attrs = base_attrs.copy()
+                    if smart_numeric:
+                        for col, val in smart_numeric.items():
+                            if val:
+                                attrs[col] = val
+                    ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
                     filtered = self.applyTypeFilter(attrs, ptype, k - capture_start_idx)
-                    capture_rows.append(self.buildPointRow(meta, len(capture_rows) + 1, point, filtered))
+                    capture_rows.append(
+                        self.buildPointRow(
+                            meta, len(capture_rows) + 1, raw_point, filtered
+                        )
+                    )
                 break
 
     def _fillRequiredAndArrival(self, lines: list[str], meta: dict[str, Any]) -> None:

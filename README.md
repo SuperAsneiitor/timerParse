@@ -176,6 +176,15 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
   - `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一保留 4 位小数（生成的 .rpt 与抽取后的 CSV 都遵守该规则）。  
 - **不确定性**：每条路径的 `clock uncertainty` 会被解析为 `path_summary.csv` 中的 `uncertainty` 列，在 `lib extract` 与 `parser_chaos` 中保持一致。
 
+#### 4.2 Format1 报告的智能解析（行类型 + 数值顺序）
+
+- Format1 的点表列为 `Point, Fanout, Cap, Trans, Location, Incr, Path`，现在在 **lib 解析栈与 parser_chaos 中都不再依赖「列名起始位置」做定宽切分来决定数值列归属**。  
+- 抽取时会先按行内容判断行类型（`clock` / `net` / `pin`），再基于「行类型 + 数值 token 顺序」映射列，例如：  
+  - clock 行只映射 `Incr, Path`；  
+  - net 行映射 `Fanout, Cap, Incr, Path`；  
+  - pin 行映射 `Cap, Trans, Incr, Path`。  
+- 这样可以兼容**列稍有错位**或外部 APR 报告中对齐不完全一致的情况，同时保证 `launch_path.csv` / `capture_path.csv` 中的数值语义与原报告一致。
+
 ---
 
 ## 支持的报告格式
