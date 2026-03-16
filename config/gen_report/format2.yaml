@@ -32,7 +32,7 @@ table:
     "x-coord": { value: { type: random_float, min: 200, max: 600, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
     "y-coord": { value: { type: random_float, min: 700, max: 1000, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
     "D-Delay": { value: { type: fixed, value: "-0.000" }, when_type: [input_pin] }
-    Delay: { value: { type: random_float, min: 0.000, max: 0.060, decimals: 3 }, when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, pin, input_pin, output_pin, constraint] }
+    Delay: { value: { type: random_float, min: 0.000, max: 0.060, decimals: 3 }, when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, pin, input_pin, output_pin, port, constraint] }
     Time: { value: { type: fixed, value: "" } }
     Description:
       value: { type: ref, ref: description_text }

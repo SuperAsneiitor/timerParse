@@ -539,9 +539,14 @@ def _parsePort(
         xy_cell = _xyCellFromRaw(raw)
         attrs["x-coord"] = _parseXy(xy_cell, "x-coord")
         attrs["y-coord"] = _parseXy(xy_cell, "y-coord")
-    attrs["Delay"] = (raw.get("Delay") or "").strip()
-    attrs["Time"] = (raw.get("Time") or "").strip()
-    _values, desc = _tailNNumericAndDesc(content, 2)
+    raw_delay = (raw.get("Delay") or "").strip()
+    raw_time = (raw.get("Time") or "").strip()
+    values, desc = _tailNNumericAndDesc(content, 2)
+    if len(values) >= 2:
+        attrs["Delay"], attrs["Time"] = values[0], values[1]
+    else:
+        attrs["Delay"], attrs["Time"] = raw_delay, raw_time
+    attrs["trigger_edge"] = _triggerEdgeFromLine(content)
     desc = _descFromPinLine(content) or desc
     point = _descToPoint(desc)
     attrs["Description"] = point

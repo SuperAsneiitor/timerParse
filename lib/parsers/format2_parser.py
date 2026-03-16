@@ -93,7 +93,7 @@ class Format2Parser(TimeParser):
         "output_pin": ["Type", "Trans", "Derate", "x-coord", "y-coord", "Delay", "Time", "trigger_edge", "Description"],
         "net": ["Type", "Fanout", "Cap", "Description"],
         "clock": ["Type", "Delay", "Time", "Description"],
-        "port": ["Type", "Trans", "x-coord", "y-coord", "Delay", "Time", "Description"],
+        "port": ["Type", "Trans", "x-coord", "y-coord", "Delay", "Time", "trigger_edge", "Description"],
         "constraint": ["Type", "Delay", "Time", "Description"],
         "required": ["Type", "Time", "Description"],
         "arrival": ["Type", "Time", "Description"],
@@ -496,10 +496,14 @@ class Format2Parser(TimeParser):
             xy_cell = self._xyCellFromRaw(raw)
             attrs["x-coord"] = self._parseXy(xy_cell, "x-coord")
             attrs["y-coord"] = self._parseXy(xy_cell, "y-coord")
-        # port 行通常不携带 Delay/Time，避免把 x/y 坐标误解析为时序值
-        attrs["Delay"] = (raw.get("Delay") or "").strip()
-        attrs["Time"] = (raw.get("Time") or "").strip()
+        raw_delay = (raw.get("Delay") or "").strip()
+        raw_time = (raw.get("Time") or "").strip()
         values, desc = _tailNNumericAndDesc(content, 2)
+        if len(values) >= 2:
+            attrs["Delay"], attrs["Time"] = values[0], values[1]
+        else:
+            attrs["Delay"], attrs["Time"] = raw_delay, raw_time
+        attrs["trigger_edge"] = self._triggerEdgeFromLine(content)
         desc = self._descFromPinLine(content) or desc
         point = _descToPoint(desc)
         attrs["Description"] = point

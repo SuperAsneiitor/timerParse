@@ -119,6 +119,35 @@ def _validateFormat2NetCap(rows: list[dict[str, str]], csv_path: Path) -> list[s
     return issues
 
 
+def _validateFormat2Port(rows: list[dict[str, str]], csv_path: Path) -> list[str]:
+    issues: list[str] = []
+    port_rows = [r for r in rows if (r.get("Type") or "").strip().lower() == "port"]
+    if not port_rows:
+        issues.append(f"{csv_path}: 未找到 port 行")
+        return issues
+    bad_delay_time = []
+    bad_desc = []
+    bad_edge = []
+    for r in port_rows:
+        delay = (r.get("Delay") or "").strip()
+        time = (r.get("Time") or "").strip()
+        desc = (r.get("Description") or "").strip()
+        edge = (r.get("trigger_edge") or "").strip().lower()
+        if not re.fullmatch(r"-?\d+(?:\.\d+)?", delay or "") or not re.fullmatch(r"-?\d+(?:\.\d+)?", time or ""):
+            bad_delay_time.append(r)
+        if not desc.endswith("(in)"):
+            bad_desc.append(r)
+        if edge not in {"r", "f"}:
+            bad_edge.append(r)
+    if bad_delay_time:
+        issues.append(f"{csv_path}: {len(bad_delay_time)} 行 port 的 Delay/Time 非法或为空")
+    if bad_desc:
+        issues.append(f"{csv_path}: {len(bad_desc)} 行 port 的 Description 非 '<name> (in)' 格式")
+    if bad_edge:
+        issues.append(f"{csv_path}: {len(bad_edge)} 行 port 的 trigger_edge 为空或非法")
+    return issues
+
+
 def validateOneExtractDir(extract_dir: Path, fmt: str) -> list[str]:
     issues: list[str] = []
     missing_files = [name for name in REQUIRED_FILES if not (extract_dir / name).exists()]
@@ -142,6 +171,8 @@ def validateOneExtractDir(extract_dir: Path, fmt: str) -> list[str]:
     if fmt == "format2":
         issues.extend(_validateFormat2NetCap(launch_rows, extract_dir / "launch_path.csv"))
         issues.extend(_validateFormat2NetCap(capture_rows, extract_dir / "capture_path.csv"))
+        issues.extend(_validateFormat2Port(launch_rows, extract_dir / "launch_path.csv"))
+        issues.extend(_validateFormat2Port(capture_rows, extract_dir / "capture_path.csv"))
     return issues
 
 

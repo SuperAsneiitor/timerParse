@@ -48,14 +48,14 @@ class Format2Report(TimingReportTemplate):
         return False
 
     def render_row(self, plan, row_ctx: dict[str, Any], cumulative_targets: set[str], cumulative_sources: set[str]) -> str:
-        # format2: 仅 pin 行使用上升/下降沿符号（/ 或 \）
+        # format2: pin/port 行在 Time 与 Description 之间使用上升/下降沿符号（/ 或 \）
         rt = str(row_ctx.get("row_type", "")).strip().lower()
         point = str(row_ctx.get("point", "") or "").strip()
         if rt in ("clock_net_delay", "clock_reconv", "clock_uncertainty"):
             row_ctx["display_type"] = "clock"
         if rt == "required_path":
             row_ctx["display_type"] = "required"
-        if rt in ("input_pin", "output_pin", "pin"):
+        if rt in ("input_pin", "output_pin", "pin", "port"):
             row_ctx["description_text"] = f"{row_ctx.get('edge_symbol', '/')} {point}"
         else:
             row_ctx["description_text"] = point
