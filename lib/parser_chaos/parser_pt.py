@@ -197,6 +197,8 @@ def _parseLaunchSegment(
                 ptype = _inferPointType(raw_point)
                 if ptype in ("input_pin", "output_pin"):
                     attrs = _extractTriggerEdgeFromPath(attrs)
+                    if not attrs.get("trigger_edge"):
+                        attrs["trigger_edge"] = _extractTriggerEdgeFromLine(lines[k])
                 filtered = _applyTypeFilter(attrs, ptype, k - launch_start_idx)
                 launch_rows.append(_buildPointRow(meta, len(launch_rows) + 1, raw_point, filtered))
             vm = re.search(r"(-?\d+\.\d+)\s*$", lines[j])
@@ -235,6 +237,8 @@ def _parseCaptureSegment(
                 ptype = _inferPointType(raw_point)
                 if ptype in ("input_pin", "output_pin"):
                     attrs = _extractTriggerEdgeFromPath(attrs)
+                    if not attrs.get("trigger_edge"):
+                        attrs["trigger_edge"] = _extractTriggerEdgeFromLine(lines[k])
                 filtered = _applyTypeFilter(attrs, ptype, k - capture_start_idx)
                 capture_rows.append(_buildPointRow(meta, len(capture_rows) + 1, raw_point, filtered))
             break
@@ -270,6 +274,12 @@ def _extractTriggerEdgeFromPath(attrs: dict[str, Any]) -> dict[str, Any]:
     else:
         attrs.setdefault("trigger_edge", "")
     return attrs
+
+
+def _extractTriggerEdgeFromLine(line: str) -> str:
+    """从整行末尾提取 trigger_edge（r/f）。"""
+    m = re.search(r"\s([rf])\s*$", line.strip(), re.IGNORECASE)
+    return m.group(1).lower() if m else ""
 
 
 def _inferPointType(point_name: str) -> str:

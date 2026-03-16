@@ -248,6 +248,8 @@ class Format1Parser(TimeParser):
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
+                        if not attrs.get("trigger_edge"):
+                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(lines[k])
                     filtered = self.applyTypeFilter(attrs, ptype, k - launch_start_idx)
                     launch_rows.append(
                         self.buildPointRow(
@@ -299,6 +301,8 @@ class Format1Parser(TimeParser):
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
+                        if not attrs.get("trigger_edge"):
+                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(lines[k])
                     filtered = self.applyTypeFilter(attrs, ptype, k - capture_start_idx)
                     capture_rows.append(
                         self.buildPointRow(
@@ -338,6 +342,12 @@ class Format1Parser(TimeParser):
         else:
             attrs.setdefault("trigger_edge", "")
         return attrs
+
+    @staticmethod
+    def _extractTriggerEdgeFromLine(line: str) -> str:
+        """从整行末尾提取 trigger_edge（r/f）。"""
+        m = re.search(r"\s([rf])\s*$", line.strip(), re.IGNORECASE)
+        return m.group(1).lower() if m else ""
 
     def _inferPointType(self, point_name: str) -> str:
         """根据 point 名称推断类型：net / output_pin / input_pin。"""

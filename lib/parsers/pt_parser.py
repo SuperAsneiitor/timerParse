@@ -134,6 +134,8 @@ class PtParser(Format1Parser):
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
+                        if not attrs.get("trigger_edge"):
+                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(lines[k])
                     filtered = self.applyTypeFilter(attrs, ptype, k - launch_start_idx)
                     launch_rows.append(self.buildPointRow(meta, len(launch_rows) + 1, raw_point, filtered))
                 vm = re.search(r"(-?\d+\.\d+)\s*$", lines[j])
@@ -163,6 +165,8 @@ class PtParser(Format1Parser):
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
+                        if not attrs.get("trigger_edge"):
+                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(lines[k])
                     filtered = self.applyTypeFilter(attrs, ptype, k - capture_start_idx)
                     capture_rows.append(self.buildPointRow(meta, len(capture_rows) + 1, raw_point, filtered))
                 break
