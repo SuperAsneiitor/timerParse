@@ -78,6 +78,21 @@ def _parse_numeric_columns(line: str, col_pos: Dict[str, int], row_kind: str) ->
     if not expected:
         return None
 
+    # net 行点名中可能包含形如 n2055 的数字；跳过 "(net)" 之前的数字，避免把网名尾号误判为 Fanout
+    if row_kind == "net":
+        attrs: Dict[str, str] = {name: "" for name in ATTRS_ORDER}
+        after_net = ""
+        m = re.search(r"\(net\)", line, re.IGNORECASE)
+        if m:
+            after_net = line[m.end() :]
+        nums = re.findall(r"-?\d+(?:\.\d+)?", after_net)
+        if not nums:
+            return None
+        limit = min(len(nums), len(expected))
+        for i, name in enumerate(expected[:limit]):
+            attrs[name] = nums[i]
+        return attrs
+
     # 直接在整行中提取数值 token，并从行尾向前取对应数量，适配不同列宽与轻微错位
     tokens_iter = list(re.finditer(r"-?\d+(?:\.\d+)?", line))
     if not tokens_iter:
