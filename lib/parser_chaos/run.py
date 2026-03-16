@@ -11,6 +11,7 @@ import os
 import sys
 from multiprocessing import Process, Queue
 
+from .. import log_util
 from .aggregator import aggregateResults, isResultSentinel
 from .constants import (
     FORMAT1,
@@ -45,6 +46,7 @@ def runExtractChaos(
     output_dir: str,
     format_key: str,
     num_workers: int,
+    log_level: str = "brief",
 ) -> int:
     """
     使用「1 个分割器 + N 个解析器」流水线执行报告解析并写出 CSV。
@@ -54,16 +56,17 @@ def runExtractChaos(
     从 result_queue 收集直至收到 num_workers 个结束哨兵；按 path_id 排序后聚合，写出 5 个 CSV。
     若 format_key 为 auto，则根据报告内容检测格式。返回 0 成功，1 失败。
     """
+    log_util.set_level(log_level)
     report_path = os.path.abspath(report_path)
     output_dir = os.path.abspath(output_dir)
     if not os.path.isfile(report_path):
-        print(f"Error: input file not found: {report_path}", file=sys.stderr)
+        log_util.error(f"Error: input file not found: {report_path}")
         return 1
     if format_key == "auto":
         format_key = detectFormatFromReport(report_path)
-        print(f"Format: {format_key} (auto-detected)")
+        log_util.brief(f"Format: {format_key} (auto-detected)")
     else:
-        print(f"Format: {format_key}")
+        log_util.brief(f"Format: {format_key}")
     # apr 与 format1 同一格式，统一为 format1
     if format_key == "apr":
         format_key = FORMAT1
@@ -95,7 +98,7 @@ def runExtractChaos(
             w.join()
 
     if not results:
-        print("No paths parsed.", file=sys.stderr)
+        log_util.error("No paths parsed.")
         return 0
 
     delay_attr = _DELAY_ATTR.get(format_key, "Incr")
@@ -143,11 +146,19 @@ def writeOutputCsv(output: ParseOutput, output_dir: str, format_key: str) -> Non
     _writeCsv(os.path.join(output_dir, "launch_clock_path.csv"), output.launch_clock_rows, base_cols)
     _writeCsv(os.path.join(output_dir, "data_path.csv"), output.data_path_rows, base_cols)
 
-    print(f"Wrote {len(output.launch_rows)} launch rows -> {output_dir}/launch_path.csv")
-    print(f"Wrote {len(output.capture_rows)} capture rows -> {output_dir}/capture_path.csv")
-    print(f"Wrote {len(output.summary_rows)} summary rows -> {output_dir}/path_summary.csv")
-    print(f"Wrote {len(output.launch_clock_rows)} launch clock rows -> {output_dir}/launch_clock_path.csv")
-    print(f"Wrote {len(output.data_path_rows)} data path rows -> {output_dir}/data_path.csv")
+    n_launch = len(output.launch_rows)
+    n_capture = len(output.capture_rows)
+    n_summary = len(output.summary_rows)
+    n_lc = len(output.launch_clock_rows)
+    n_dp = len(output.data_path_rows)
+    log_util.brief(
+        f"Wrote {n_launch} launch, {n_capture} capture, {n_summary} summary, {n_lc} launch_clock, {n_dp} data_path rows -> {output_dir}"
+    )
+    log_util.full(f"  {output_dir}/launch_path.csv -> {n_launch} rows")
+    log_util.full(f"  {output_dir}/capture_path.csv -> {n_capture} rows")
+    log_util.full(f"  {output_dir}/path_summary.csv -> {n_summary} rows")
+    log_util.full(f"  {output_dir}/launch_clock_path.csv -> {n_lc} rows")
+    log_util.full(f"  {output_dir}/data_path.csv -> {n_dp} rows")
 
 
 def _writeCsv(output_path: str, rows: list[dict], columns: list[str]) -> None:

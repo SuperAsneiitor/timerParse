@@ -8,6 +8,8 @@
 python -m lib <子命令> [参数...]
 ```
 
+所有子命令支持 **`--log-level brief|full`**：`brief` 为每步一行汇总（默认），`full` 为多行展开（如各 CSV 路径与行数、列名等）。
+
 **仓库中不包含测试数据与测试结果**：`input/` 及各类 `output*/` 已通过 `.gitignore` 排除。
 
 ---
@@ -163,6 +165,16 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 - `config/gen_report/format1.yaml`
 - `config/gen_report/format2.yaml`
 - `config/gen_report/pt.yaml`
+
+#### 4.1 PT 报告对齐约定（生成 & 解析）
+
+- **clock 行**：launch/capture 第一行的 `clock clk_hclk (rise edge)` 仅带 `Mean/Incr/Path`，**不带 `Trans/Sensit`**。  
+- **clock source latency**：第二行使用文案 `clock source latency`（不再是 `clock network delay (ideal)`）。  
+- **port 行（`dft_clk (in)`）**：在 `Trans, Mean, Sensit, Incr, Path` 上都有数值，用于验证端口一侧 clock 栈的行为。  
+- **数值精度**：  
+  - `Fanout` 为整数；  
+  - `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一保留 4 位小数（生成的 .rpt 与抽取后的 CSV 都遵守该规则）。  
+- **不确定性**：每条路径的 `clock uncertainty` 会被解析为 `path_summary.csv` 中的 `uncertainty` 列，在 `lib extract` 与 `parser_chaos` 中保持一致。
 
 ---
 

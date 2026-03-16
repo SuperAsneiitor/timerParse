@@ -14,6 +14,8 @@ from collections import defaultdict
 from multiprocessing import Pool, cpu_count
 from typing import List
 
+from . import log_util
+
 OUTPUT_PINS = frozenset({"Q", "Z", "ZN", "ZP"})
 
 
@@ -165,13 +167,14 @@ def run_gen_pt(args) -> int:
     """执行 gen-pt 子命令。args 需有 launch_csv, output, max_paths, no_wrap, extra, report_file, jobs。"""
     csv_path = os.path.abspath(args.launch_csv)
     if not os.path.isfile(csv_path):
-        print(f"Error: launch_path CSV not found: {csv_path}", file=sys.stderr)
+        log_util.error(f"Error: launch_path CSV not found: {csv_path}")
         return 1
 
     paths, metric_columns = load_launch_paths(csv_path)
-    if metric_columns:
-        print(f"CSV 指标列: {', '.join(metric_columns)}")
     path_ids = sorted(paths.keys())
+    if metric_columns:
+        log_util.full(f"CSV 指标列: {', '.join(metric_columns)}")
+    log_util.full(f"path 数: {len(path_ids)}, 输出: {args.output}")
     if getattr(args, "max_paths", 0) > 0:
         path_ids = path_ids[: args.max_paths]
 
@@ -226,5 +229,5 @@ def run_gen_pt(args) -> int:
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    print(f"Wrote {len(path_ids)} report_timing commands -> {out_path}")
+    log_util.brief(f"Wrote {len(path_ids)} report_timing commands -> {out_path}")
     return 0

@@ -10,7 +10,7 @@ variables:
   capture_groups: { type: random_int, min: 2, max: 9 }
 
 point_generator:
-  clock_net_delay: { template: "clock network delay (ideal)" }
+  clock_net_delay: { template: "clock source latency" }
   clock_uncertainty: { template: "clock uncertainty" }
   library_setup: { template: "library hold time" }
   net: { template: "{prefix}/n{net_index} (net)" }
@@ -36,17 +36,17 @@ table:
     Point: { value: { type: ref, ref: point } }
     Fanout: { value: { type: random_int, min: 1, max: 6 }, profiles: [net_rows] }
     Cap: { value: { type: random_float, min: 0.000, max: 0.050, decimals: 2 }, profiles: [net_rows] }
-    Trans: { value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }, profiles: [pin_rows] }
+    Trans: { value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }, when_type: [pin, input_pin, output_pin, port] }
     Derate: { value: { type: fixed, value: "1.1000" }, profiles: [pin_rows] }
     Mean:
       value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
-      when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint]
+      when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint, port]
     Sensit:
       value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
-      when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint]
+      when_type: [clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint, port]
     Incr:
       value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
-      when_type: [clock, pin, input_pin, output_pin, net, clock_net_delay, clock_reconv, clock_uncertainty, library_setup]
+      when_type: [clock, pin, input_pin, output_pin, net, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, port]
     Path: { value: { type: fixed, value: "" } }
 
 summary_policy:

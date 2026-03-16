@@ -12,6 +12,8 @@ from typing import Any
 from .utils import extractColumnPositions, fillUncertainty, parseFixedWidthAttrs
 
 ATTRS_ORDER = ["Fanout", "Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"]
+PT_FLOAT_COLS = ("Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path")
+PT_FANOUT_COL = "Fanout"
 SKIP_FIRST_ROWS = 2
 ATTRS_BY_TYPE = {
     "net": ["Fanout", "Cap"],
@@ -236,13 +238,35 @@ def _applyTypeFilter(
     return out
 
 
+def _format_pt_metric_for_csv(col: str, val: Any) -> Any:
+    """PT 抽取 CSV：Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+    if val is None or val == "":
+        return "" if col in PT_FLOAT_COLS or col == PT_FANOUT_COL else val
+    if col == PT_FANOUT_COL:
+        try:
+            return int(float(str(val).strip().split()[0] if isinstance(val, str) else val))
+        except (ValueError, TypeError):
+            return val
+    if col in PT_FLOAT_COLS:
+        try:
+            s = str(val).replace("&", "").strip()
+            for suffix in (" r", " f"):
+                if s.endswith(suffix):
+                    s = s[:-2].strip()
+                    break
+            return f"{float(s):.4f}"
+        except (ValueError, TypeError):
+            return val
+    return val
+
+
 def _buildPointRow(
     meta: dict[str, Any],
     point_index: int,
     point: str,
     attrs: dict[str, Any],
 ) -> dict[str, Any]:
-    """构建一行点表数据；PT 抽取结果中 Incr 不保留 & 符号。"""
+    """构建一行点表数据；PT 抽取结果 Incr 去 &，Fanout 整数，其余指标 4 位小数。"""
     row = {
         "path_id": meta["path_id"],
         "startpoint": meta["startpoint"],
@@ -259,4 +283,7 @@ def _buildPointRow(
     incr = row.get("Incr", "")
     if isinstance(incr, str) and "&" in incr:
         row["Incr"] = incr.replace("&", "").strip()
+    for col in [PT_FANOUT_COL] + list(PT_FLOAT_COLS):
+        if col in row and row[col] not in (None, ""):
+            row[col] = _format_pt_metric_for_csv(col, row[col])
     return row

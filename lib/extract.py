@@ -8,9 +8,9 @@
 from __future__ import annotations
 
 import os
-import sys
 
 from . import createParser, detectReportFormat
+from . import log_util
 from .parsers.time_parser_base import ParseOutput, TimeParser
 
 # 抽取结果中保留的语义列（与格式无关的统一列集合）
@@ -110,16 +110,16 @@ def runExtract(args) -> int:
     rpt_path = os.path.abspath(args.input_rpt)
     out_dir = os.path.abspath(args.output_dir)
     if not os.path.isfile(rpt_path):
-        print(f"Error: input file not found: {rpt_path}", file=sys.stderr)
+        log_util.error(f"Error: input file not found: {rpt_path}")
         return 1
 
     format_key = args.format
     if format_key == "auto":
         with open(rpt_path, "r", encoding="utf-8", errors="replace") as f:
             format_key = detectReportFormat(f.read())
-        print(f"Format: {format_key} (auto-detected)")
+        log_util.brief(f"Format: {format_key} (auto-detected)")
     else:
-        print(f"Format: {format_key}")
+        log_util.brief(f"Format: {format_key}")
 
     parser_impl = createParser(format_key)
     result = parseWithJobs(parser_impl, rpt_path, jobs=args.jobs)
@@ -139,9 +139,14 @@ def runExtract(args) -> int:
     parser_impl.writeCsv(launch_clock_csv, result.launch_clock_rows, base_cols)
     parser_impl.writeCsv(data_path_csv, result.data_path_rows, base_cols)
 
-    print(f"Wrote {len(result.launch_rows)} launch rows -> {launch_csv}")
-    print(f"Wrote {len(result.capture_rows)} capture rows -> {capture_csv}")
-    print(f"Wrote {len(result.summary_rows)} summary rows -> {summary_csv}")
-    print(f"Wrote {len(result.launch_clock_rows)} launch clock rows -> {launch_clock_csv}")
-    print(f"Wrote {len(result.data_path_rows)} data path rows -> {data_path_csv}")
+    n_launch, n_capture, n_summary = len(result.launch_rows), len(result.capture_rows), len(result.summary_rows)
+    n_lc, n_dp = len(result.launch_clock_rows), len(result.data_path_rows)
+    log_util.brief(
+        f"Wrote {n_launch} launch, {n_capture} capture, {n_summary} summary, {n_lc} launch_clock, {n_dp} data_path rows -> {out_dir}"
+    )
+    log_util.full(f"  {launch_csv} -> {n_launch} rows")
+    log_util.full(f"  {capture_csv} -> {n_capture} rows")
+    log_util.full(f"  {summary_csv} -> {n_summary} rows")
+    log_util.full(f"  {launch_clock_csv} -> {n_lc} rows")
+    log_util.full(f"  {data_path_csv} -> {n_dp} rows")
     return 0

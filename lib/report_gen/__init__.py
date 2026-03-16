@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +8,7 @@ from .base import TimingReportTemplate
 from .format1 import Format1Report
 from .format2 import Format2Report
 from .pt import PtReport
+from .. import log_util
 
 
 def create_generator(format_name: str) -> TimingReportTemplate:
@@ -120,19 +120,19 @@ def run_gen_report(args) -> int:
     """CLI：从 YAML 生成 timing report（使用模板类）。"""
     config_path = getattr(args, "config", "")
     if not config_path:
-        print("Error: missing config", file=sys.stderr)
+        log_util.error("Error: missing config")
         return 1
     try:
         # 先读取 YAML，拿到 format
         import yaml  # type: ignore
     except Exception:
-        print("Error: 需要 PyYAML。请执行: pip install pyyaml", file=sys.stderr)
+        log_util.error("Error: 需要 PyYAML。请执行: pip install pyyaml")
         return 1
     try:
         raw_config = _load_with_extends(Path(config_path).resolve())
         config: dict[str, Any] = _normalize_config_schema(raw_config)
     except Exception as e:
-        print(f"Error: 解析 YAML 失败: {e}", file=sys.stderr)
+        log_util.error(f"Error: 解析 YAML 失败: {e}")
         return 1
 
     fmt = str((config.get("format") or "unknown")).strip().lower()
@@ -142,9 +142,13 @@ def run_gen_report(args) -> int:
     try:
         gen.generate(config, output_path=output, seed=seed)
     except Exception as e:
-        print(f"Error: 生成报告失败: {e}", file=sys.stderr)
+        log_util.error(f"Error: 生成报告失败: {e}")
         return 1
-    print(f"Generated timing report -> {output}")
+    num_paths = int(config.get("num_paths", 0))
+    log_util.brief(f"Generated timing report -> {output}")
+    log_util.full(f"  config: {config_path}")
+    log_util.full(f"  format: {fmt}, num_paths: {num_paths}")
+    log_util.full(f"  output: {output}")
     return 0
 
 

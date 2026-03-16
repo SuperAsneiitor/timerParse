@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import log_util
+
 RATIO_COLUMNS = ["arrival_time_ratio", "required_time_ratio", "slack_ratio"]
 FIELDNAMES_FULL = [
     "path_id", "startpoint", "endpoint",
@@ -223,14 +225,14 @@ def _ensure_matplotlib() -> bool:
         import matplotlib  # noqa: F401
         return True
     except Exception:
-        print("matplotlib 未安装，尝试自动安装...", file=sys.stderr)
+        log_util.error("matplotlib 未安装，尝试自动安装...")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "matplotlib"])
             import matplotlib  # noqa: F401
-            print("matplotlib 自动安装成功。", file=sys.stderr)
+            log_util.error("matplotlib 自动安装成功。")
             return True
         except Exception as e:
-            print(f"警告: matplotlib 安装失败，将跳过图表生成。错误: {e}", file=sys.stderr)
+            log_util.error(f"警告: matplotlib 安装失败，将跳过图表生成。错误: {e}")
             return False
 
 
@@ -390,24 +392,24 @@ def run_compare(args) -> int:
     golden_path = Path(args.golden_file)
     test_path = Path(args.test_file)
     if not golden_path.is_file():
-        print(f"Error: golden file not found: {golden_path}", file=sys.stderr)
+        log_util.error(f"Error: golden file not found: {golden_path}")
         return 1
     if not test_path.is_file():
-        print(f"Error: test file not found: {test_path}", file=sys.stderr)
+        log_util.error(f"Error: test file not found: {test_path}")
         return 1
 
     golden_rows = load_summary(str(golden_path))
     test_rows = load_summary(str(test_path))
     if not golden_rows:
-        print("Error: golden file has no rows.", file=sys.stderr)
+        log_util.error("Error: golden file has no rows.")
         return 1
     if not test_rows:
-        print("Error: test file has no rows.", file=sys.stderr)
+        log_util.error("Error: test file has no rows.")
         return 1
 
     result = compare(golden_rows, test_rows)
     if not result:
-        print("Warning: no common path_id between the two files.", file=sys.stderr)
+        log_util.error("Warning: no common path_id between the two files.")
 
     out_path = (Path(args.output.strip()) if getattr(args, "output", "").strip()
                 else golden_path.parent / "compare_result.csv")
@@ -452,13 +454,13 @@ def run_compare(args) -> int:
             charts_dir=charts_dir,
         )
 
-    print(f"Compared {len(result)} path(s) -> {out_path}")
-    print(f"Simplified -> {simple_path}")
-    print(f"Stats JSON -> {stats_json_path}")
+    log_util.brief(f"Compared {len(result)} path(s) -> {out_path}")
+    log_util.brief(f"Simplified -> {simple_path}")
+    log_util.brief(f"Stats JSON -> {stats_json_path}")
     if stats_csv_path:
-        print(f"Stats CSV -> {stats_csv_path}")
+        log_util.full(f"Stats CSV -> {stats_csv_path}")
     if not getattr(args, "no_charts", False):
-        print(f"Charts dir -> {charts_dir}")
+        log_util.full(f"Charts dir -> {charts_dir}")
     if not getattr(args, "no_html", False):
-        print(f"HTML report -> {html_path}")
+        log_util.full(f"HTML report -> {html_path}")
     return 0

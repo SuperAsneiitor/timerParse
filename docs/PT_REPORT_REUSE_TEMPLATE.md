@@ -57,6 +57,17 @@
 - `Path` 追加边沿标记：`r/f`（例：`0.3528 r`、`0.1882 f`）
 - `slack >= 0` -> `MET`；`slack < 0` -> `VIOLATED`
 
+#### 2.2.1 PT 数值精度与特殊行
+
+- **clock 行（launch/capture 第一行）**：  
+  - 只展示 `Mean/Incr/Path`，不展示 `Trans/Sensit`（保持与实际 PT 报告一致）；  
+  - `Mean/Incr/Path` 保留 4 位小数。  
+- **clock source latency 行**：第二行文案统一为 `clock source latency`，其数值同样按 4 位小数输出。  
+- **端口行 `dft_clk (in)`**：在 `Trans, Mean, Sensit, Incr, Path` 上均应有数值，便于验证端口一侧 clock 路径的解析。  
+- **统一精度**：在生成与解析（lib/parsers + parser_chaos）端保持一致：  
+  - `Fanout` 为整数；  
+  - `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一 4 位小数。
+
 ### 2.3 约束项位置规则
 
 - `clock reconvergence pessimism` 和 `clock uncertainty` 放在 capture path 的后段，**紧邻 data required time 前**，不要出现在中段路径点之间。

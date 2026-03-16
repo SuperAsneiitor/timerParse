@@ -12,6 +12,33 @@ from typing import Any
 from .format1_parser import Format1Parser
 
 
+PT_FLOAT_COLS = ("Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path")
+PT_FANOUT_COL = "Fanout"
+
+
+def _format_pt_metric_for_csv(col: str, val: Any) -> Any:
+    """PT 抽取 CSV：Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+    if val is None or val == "":
+        return "" if col in PT_FLOAT_COLS or col == PT_FANOUT_COL else val
+    if col == PT_FANOUT_COL:
+        try:
+            return int(float(str(val).strip().split()[0] if isinstance(val, str) else val))
+        except (ValueError, TypeError):
+            return val
+    if col in PT_FLOAT_COLS:
+        try:
+            s = str(val).replace("&", "").strip()
+            # 去掉末尾的 r/f
+            for suffix in (" r", " f"):
+                if s.endswith(suffix):
+                    s = s[:-2].strip()
+                    break
+            return f"{float(s):.4f}"
+        except (ValueError, TypeError):
+            return val
+    return val
+
+
 class PtParser(Format1Parser):
     """PT 报告解析器。表头含 Point, Fanout, Cap, Trans, Derate, Mean, Sensit, Incr, Path；Startpoint/Endpoint 可为实例名。"""
 
@@ -159,10 +186,13 @@ class PtParser(Format1Parser):
         point: str,
         attrs: dict[str, Any],
     ) -> dict[str, Any]:
-        """同基类，且对 PT 抽取结果去掉 Incr 中的 & 符号。"""
+        """同基类；PT 抽取结果去掉 Incr 的 &，Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
         row = super().buildPointRow(meta, point_index, point, attrs)
         incr = row.get("Incr", "")
         if isinstance(incr, str) and "&" in incr:
             row["Incr"] = incr.replace("&", "").strip()
+        for col in [PT_FANOUT_COL] + list(PT_FLOAT_COLS):
+            if col in row and row[col] not in (None, ""):
+                row[col] = _format_pt_metric_for_csv(col, row[col])
         return row
 

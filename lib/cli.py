@@ -6,6 +6,7 @@ import sys
 from . import extract
 from . import compare_path_summary as compare_module
 from . import gen_pt_report_timing as gen_pt_module
+from . import log_util
 from .report_gen import run_gen_report as run_gen_report
 
 
@@ -24,9 +25,16 @@ def build_parser() -> argparse.ArgumentParser:
         description="Timing 报告解析与后处理：解析报告、生成 PT TCL、对比 path_summary。"
     )
     subparsers = parser.add_subparsers(dest="command", help="子命令")
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
+        "--log-level",
+        choices=["brief", "full"],
+        default="brief",
+        help="日志等级：brief 每步一行汇总，full 多行展开（默认 brief）",
+    )
 
     # extract
-    ext = subparsers.add_parser("extract", help="解析 Timing 报告，输出多 CSV")
+    ext = subparsers.add_parser("extract", help="解析 Timing 报告，输出多 CSV", parents=[parent])
     ext.add_argument("input_rpt", help="输入 timing report 文件路径")
     ext.add_argument("-o", "--output-dir", default="output_lib", help="输出目录（默认: output_lib）")
     ext.add_argument(
@@ -41,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # gen-pt
-    gp = subparsers.add_parser("gen-pt", help="根据 launch_path.csv 生成 PrimeTime report_timing TCL")
+    gp = subparsers.add_parser("gen-pt", help="根据 launch_path.csv 生成 PrimeTime report_timing TCL", parents=[parent])
     gp.add_argument(
         "launch_csv",
         nargs="?",
@@ -56,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     gp.add_argument("-j", "--jobs", type=int, default=1, metavar="N", help="多进程 worker 数")
 
     # compare
-    cp = subparsers.add_parser("compare", help="对比两个 path_summary CSV（golden vs test）")
+    cp = subparsers.add_parser("compare", help="对比两个 path_summary CSV（golden vs test）", parents=[parent])
     cp.add_argument("golden_file", help="Golden path_summary.csv 路径")
     cp.add_argument("test_file", help="Test path_summary.csv 路径")
     cp.add_argument("-o", "--output", default="", help="输出 CSV 路径")
@@ -69,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--stats-csv", default="", help="统计 CSV 路径（可选）")
 
     # gen-report：根据 YAML 生成 timing 报告
-    gr = subparsers.add_parser("gen-report", help="根据 YAML 配置生成 Timing 报告（title + path 表格）")
+    gr = subparsers.add_parser("gen-report", help="根据 YAML 配置生成 Timing 报告（title + path 表格）", parents=[parent])
     gr.add_argument("config", help="YAML 配置文件路径")
     gr.add_argument("-o", "--output", default=None, help="输出报告文件路径（默认按 format 写到 output/gen_<format>_timing_report.rpt）")
     gr.add_argument("--seed", type=int, default=None, metavar="N", help="随机种子（可复现）")
@@ -86,6 +94,8 @@ def run_cli(argv: list[str] | None = None) -> int:
     if not getattr(args, "command", None):
         parser.print_help()
         return 0
+
+    log_util.set_level(getattr(args, "log_level", "brief"))
 
     if args.command == "extract":
         return extract.runExtract(args)

@@ -6,9 +6,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+repo = Path(__file__).resolve().parents[1]
+if str(repo) not in sys.path:
+    sys.path.insert(0, str(repo))
+from lib import log_util
+
 
 def run(cmd: list[str], cwd: Path) -> None:
-    print(">", " ".join(cmd))
+    log_util.full("> " + " ".join(cmd))
     p = subprocess.run(cmd, cwd=str(cwd))
     if p.returncode != 0:
         raise SystemExit(p.returncode)
@@ -27,14 +32,21 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="可选输出目录；默认 test_results/validation_flow_YYYYMMDD_HHMMSS",
     )
+    parser.add_argument(
+        "--log-level",
+        choices=["brief", "full"],
+        default="brief",
+        help="日志等级：brief 每步一行汇总，full 多行展开（含子命令回显）",
+    )
     args = parser.parse_args(argv)
+    log_util.set_level(args.log_level)
 
-    repo = Path(__file__).resolve().parents[1]
+    _repo = Path(__file__).resolve().parents[1]
     if args.output_base:
-        base = (repo / args.output_base).resolve()
+        base = (_repo / args.output_base).resolve()
     else:
         ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        base = repo / "test_results" / f"validation_flow_{ts}"
+        base = _repo / "test_results" / f"validation_flow_{ts}"
 
     reports = base / "reports"
     ex1 = base / "extract_format1"
@@ -55,8 +67,10 @@ def main(argv: list[str] | None = None) -> int:
             str(args.seed_format1),
             "-o",
             str(reports / "gen_format1.rpt"),
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
     run(
         [
@@ -69,8 +83,10 @@ def main(argv: list[str] | None = None) -> int:
             str(args.seed_format2),
             "-o",
             str(reports / "gen_format2.rpt"),
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
     run(
         [
@@ -83,8 +99,10 @@ def main(argv: list[str] | None = None) -> int:
             str(args.seed_pt),
             "-o",
             str(reports / "gen_pt.rpt"),
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
 
     run(
@@ -100,8 +118,10 @@ def main(argv: list[str] | None = None) -> int:
             str(ex1),
             "-j",
             str(args.jobs),
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
     run(
         [
@@ -116,8 +136,10 @@ def main(argv: list[str] | None = None) -> int:
             str(ex2),
             "-j",
             str(args.jobs),
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
     run(
         [
@@ -132,8 +154,10 @@ def main(argv: list[str] | None = None) -> int:
             str(expt),
             "-j",
             str(args.jobs),
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
 
     run(
@@ -150,8 +174,10 @@ def main(argv: list[str] | None = None) -> int:
             str(cmpd / "pt_vs_format1_stats.json"),
             "--no-charts",
             "--no-html",
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
     run(
         [
@@ -167,11 +193,13 @@ def main(argv: list[str] | None = None) -> int:
             str(cmpd / "pt_vs_format2_stats.json"),
             "--no-charts",
             "--no-html",
+            "--log-level",
+            args.log_level,
         ],
-        repo,
+        _repo,
     )
 
-    print(f"Validation flow done: {base}")
+    log_util.brief(f"Validation flow done: {base}")
     return 0
 
 

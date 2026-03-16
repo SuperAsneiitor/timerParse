@@ -84,6 +84,12 @@ lib/parser_chaos/
 
 这意味着：对同一输入报告，`lib/extract` 与 `parser_chaos` 的 `path_summary.csv` 可以直接用 `lib compare` 对比。
 
+针对 **PT 报告**，parser_chaos 与主解析栈在数值上也保持同一约定：
+
+- `Fanout` 解析为整数；
+- `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一按 4 位小数写入 CSV；
+- `Incr` 列会去掉原始 PT 报告中的 `&` 符号，仅保留数值部分。
+
 ## 依赖
 
 与主项目相同：Python 3.9+，无额外第三方依赖（仅标准库 + 项目已有 PyYAML/matplotlib）。

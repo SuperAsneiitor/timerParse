@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
+from typing import Any
 
 from .base import TimingReportTemplate, ValueResolver, _to_float, _str_value
 
@@ -84,12 +85,61 @@ class PtReport(TimingReportTemplate):
     @staticmethod
     def _format_with_edge(path_val: object, edge: str) -> str:
         v = _to_float(path_val)
-        return f"{v:.2f} {edge}"
+        return f"{v:.4f} {edge}"
 
     @staticmethod
     def _format_incr(incr_val: object) -> str:
         v = _to_float(incr_val)
         return f"{v:.4f} &"
+
+    PT_FLOAT_COLS = ("Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path")
+    PT_FANOUT_COL = "Fanout"
+
+    def _pt_cell_str(self, col: str, val: Any) -> str:
+        """PT 格式：Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+        if val is None or val == "":
+            return ""
+        if col == self.PT_FANOUT_COL:
+            try:
+                return str(int(_to_float(val)))
+            except (ValueError, TypeError):
+                return str(val)
+        if col in self.PT_FLOAT_COLS:
+            if isinstance(val, str) and (val.endswith("&") or " " in val.strip() and val.strip().split()[-1] in ("r", "f")):
+                return val  # 已是 "x.xxxx &" 或 "x.xxxx r"
+            try:
+                return f"{_to_float(val):.4f}"
+            except (ValueError, TypeError):
+                return str(val)
+        if isinstance(val, float):
+            return f"{val:.4f}"
+        return "" if val is None else str(val)
+
+    def render_row(self, plan, row_ctx: dict[str, Any], cumulative_targets: set[str], cumulative_sources: set[str]) -> str:
+        """PT：表体列 Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+        from .base import RenderPlan, ValueResolver, _str_value
+        cells: list[str] = []
+        for col in plan.column_order:
+            cfg = plan.columns_config.get(col) or {}
+            when = cfg.get("when_type") or cfg.get("when")
+            row_type = row_ctx.get("row_type", "")
+            if when and row_type and row_type not in when:
+                cells.append("")
+                continue
+            if col in cumulative_targets and col in row_ctx:
+                cells.append(self._pt_cell_str(col, row_ctx[col]))
+                continue
+            if col in cumulative_sources and col in row_ctx:
+                cells.append(self._pt_cell_str(col, row_ctx[col]))
+                continue
+            spec = cfg.get("value") or cfg.get("spec") or {}
+            val = ValueResolver.resolve_value(spec, {**row_ctx, "row": row_ctx, "path": row_ctx.get("path") or {}})
+            cells.append(self._pt_cell_str(col, val))
+        parts = []
+        for i, col in enumerate(plan.column_order):
+            w = int(plan.col_widths.get(col, 16))
+            parts.append((cells[i] if i < len(cells) else "").ljust(w)[:w])
+        return "".join(parts).rstrip()
 
     def generate(self, config: dict, output_path: str, seed: int | None = None) -> None:
         # PT 采用专用流程，严格控制分隔符与 summary 区块位置。
@@ -179,7 +229,7 @@ class PtReport(TimingReportTemplate):
                         if rt in ("input_pin", "output_pin", "pin"):
                             row_ctx["Incr"] = self._format_incr(row_ctx.get("Incr", 0.0))
                         else:
-                            row_ctx["Incr"] = f"{_to_float(row_ctx.get('Incr', 0.0)):.2f}"
+                            row_ctx["Incr"] = f"{_to_float(row_ctx.get('Incr', 0.0)):.4f}"
                     if "Path" in row_ctx and rt in ("input_pin", "output_pin", "pin", "net"):
                         row_ctx["Path"] = self._format_with_edge(row_ctx.get("Path", 0.0), launch_edge)
 
@@ -226,7 +276,7 @@ class PtReport(TimingReportTemplate):
                         if rt in ("input_pin", "output_pin", "pin"):
                             row_ctx["Incr"] = self._format_incr(row_ctx.get("Incr", 0.0))
                         else:
-                            row_ctx["Incr"] = f"{_to_float(row_ctx.get('Incr', 0.0)):.2f}"
+                            row_ctx["Incr"] = f"{_to_float(row_ctx.get('Incr', 0.0)):.4f}"
                     if "Path" in row_ctx and rt in ("input_pin", "output_pin", "pin", "net", "endpoint"):
                         row_ctx["Path"] = self._format_with_edge(row_ctx.get("Path", 0.0), capture_edge)
 
