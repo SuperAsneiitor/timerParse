@@ -81,7 +81,7 @@ table:
 - PT 生成对齐 raw 风格：`clock network delay (ideal)`、capture 段保留关键约束行、`input_pin/output_pin` 的 `Derate` 输出为 4 位小数（例如 `1.1000`）。
 - 新模板 schema 支持 `extends` + `base.yaml` + format override，`row_type_profiles` 可收敛 `when_type` 配置。
 - 新增固定验证脚本 `scripts/run_validation_flow.py`，默认强制时间戳目录输出。
- - PT / Format1 报告的点表解析从「依赖列名起始位置的定宽切分」升级为「按行类型 + 数值 token 顺序映射列」，能更稳健地处理列对齐轻微漂移（例如 Fanout/Cap 值整体偏左一两列）而不影响抽取结果；parser_chaos 与 lib 解析栈在这两种格式上的数值行为保持一致。
+- PT / Format1 报告的点表解析从「依赖列名起始位置的定宽切分」升级为「按行类型 + 数值 token 顺序补齐关键数值列」，其中 **Incr/Path 等累加相关列只依赖行内数值 token 顺序恢复，不再受列起始位置影响，Cap/Trans/Fanout 仍保留定宽解析结果**，能更稳健地处理列对齐轻微漂移而不影响抽取结果；parser_chaos 与 lib 解析栈在这两种格式上的数值行为保持一致。
 
 ### 推荐命令（不覆盖输出）
 

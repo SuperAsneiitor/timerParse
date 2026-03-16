@@ -64,7 +64,8 @@ def _parse_numeric_columns(line: str, col_pos: Dict[str, int], row_kind: str) ->
 
     若无法可靠映射（无数字或 row_kind 未知），返回 None，调用方应回退到 parseFixedWidthAttrs 的 attrs。
     """
-    if not row_kind or not col_pos:
+    # 行类型未知时不启用数值映射；不再依赖列起始位置，仅看整行数值顺序
+    if not row_kind:
         return None
     # 预期列顺序映射
     expected_by_kind: Dict[str, List[str]] = {
@@ -77,26 +78,17 @@ def _parse_numeric_columns(line: str, col_pos: Dict[str, int], row_kind: str) ->
     if not expected:
         return None
 
-    # 估计 point 结束与数值区域起点：以第一列名起点为界，但允许值略微向左漂移
-    first_col = min(col_pos.values())
-    # point 区域近似为 [0, first_col)
-    point_region = line[:first_col]
-    approx_point_end = len(point_region.rstrip("\n"))
-    numeric_start = max(0, min(first_col, approx_point_end + 1))
-    # 允许值比列名左移最多 6 个字符，但不越过 point 区域
-    numeric_start = max(approx_point_end, first_col - 6)
-    numeric_start = max(0, numeric_start)
-
-    numeric_part = line[numeric_start:]
-    tokens_iter = list(re.finditer(r"-?\d+(?:\.\d+)?", numeric_part))
+    # 直接在整行中提取数值 token，并从行尾向前取对应数量，适配不同列宽与轻微错位
+    tokens_iter = list(re.finditer(r"-?\d+(?:\.\d+)?", line))
     if not tokens_iter:
         return None
     tokens = [m.group(0) for m in tokens_iter]
 
     attrs: Dict[str, str] = {name: "" for name in ATTRS_ORDER}
     limit = min(len(tokens), len(expected))
-    for i in range(limit):
-        attrs[expected[i]] = tokens[i]
+    tail = tokens[-limit:] if limit else []
+    for i, name in enumerate(expected[:limit]):
+        attrs[name] = tail[i]
     return attrs
 
 

@@ -143,32 +143,39 @@ def _parse_numeric_columns(
 
     若无法可靠映射（无数字或 row_kind 未知），返回 None，调用方应回退到 parseFixedWidthAttrs 的 attrs。
     """
-    if not row_kind or not col_pos:
+    if not row_kind:
         return None
-    expected_by_kind: Dict[str, List[str]] = {
-        "clock": ["Incr", "Path"],
-        "net": ["Fanout", "Cap", "Incr", "Path"],
-        "pin": ["Cap", "Trans", "Incr", "Path"],
-    }
-    expected = expected_by_kind.get(row_kind)
-    if not expected:
-        return None
-
-    first_col = min(col_pos.values())
-    point_region = line[:first_col]
-    approx_point_end = len(point_region.rstrip("\n"))
-    numeric_start = max(approx_point_end, first_col - 6)
-    numeric_start = max(0, numeric_start)
-
-    numeric_part = line[numeric_start:]
-    tokens = re.findall(r"-?\d+(?:\.\d+)?", numeric_part)
+    tokens = re.findall(r"-?\d+(?:\.\d+)?", line)
     if not tokens:
         return None
 
+    # 仅针对易截断的 Incr/Path 使用数值顺序解析，Fanout/Cap/Trans 保持定宽结果，
+    # 与 lib.parsers 中 Format1Parser 的策略保持一致。
     attrs: Dict[str, str] = {name: "" for name in ATTRS_ORDER}
-    limit = min(len(tokens), len(expected))
-    for i in range(limit):
-        attrs[expected[i]] = tokens[i]
+    if row_kind == "clock":
+        if len(tokens) >= 2:
+            attrs["Incr"] = tokens[-2]
+            attrs["Path"] = tokens[-1]
+        elif len(tokens) == 1:
+            attrs["Path"] = tokens[-1]
+        return attrs
+
+    if row_kind == "net":
+        if len(tokens) >= 2:
+            attrs["Incr"] = tokens[-2]
+            attrs["Path"] = tokens[-1]
+        elif len(tokens) == 1:
+            attrs["Path"] = tokens[-1]
+        return attrs
+
+    if row_kind == "pin":
+        if len(tokens) >= 2:
+            attrs["Incr"] = tokens[-2]
+            attrs["Path"] = tokens[-1]
+        elif len(tokens) == 1:
+            attrs["Path"] = tokens[-1]
+        return attrs
+
     return attrs
 
 

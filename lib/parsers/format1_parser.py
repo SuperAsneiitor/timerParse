@@ -171,33 +171,45 @@ class Format1Parser(TimeParser):
 
         若无法可靠映射（无数字或 row_kind 未知），返回 None，调用方应回退到 parseFixedWidthAttrs 的 attrs。
         """
-        if not row_kind or not col_pos:
+        # 行类型未知时不启用数值映射
+        if not row_kind:
             return None
-        expected_by_kind: Dict[str, List[str]] = {
-            "clock": ["Incr", "Path"],
-            "net": ["Fanout", "Cap", "Incr", "Path"],
-            "pin": ["Cap", "Trans", "Incr", "Path"],
-        }
-        expected = expected_by_kind.get(row_kind)
-        if not expected:
-            return None
-
-        # 估算数值区域起点：以第一列名起点为主，允许稍微左移，避免轻微错列
-        first_col = min(col_pos.values())
-        point_region = line[:first_col]
-        approx_point_end = len(point_region.rstrip("\n"))
-        numeric_start = max(approx_point_end, first_col - 6)
-        numeric_start = max(0, numeric_start)
-
-        numeric_part = line[numeric_start:]
-        tokens = re.findall(r"-?\d+(?:\.\d+)?", numeric_part)
+        tokens = re.findall(r"-?\d+(?:\.\d+)?", line)
         if not tokens:
             return None
 
+        # 只针对易截断的 Incr/Path 做“数值顺序”解析，Cap/Trans/Fanout 仍由定宽解析负责，
+        # 以兼顾内部生成报告与外部 APR 报告。
         attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
-        limit = min(len(tokens), len(expected))
-        for i in range(limit):
-            attrs[expected[i]] = tokens[i]
+        if row_kind == "clock":
+            if len(tokens) >= 2:
+                attrs["Incr"] = tokens[-2]
+                attrs["Path"] = tokens[-1]
+            elif len(tokens) == 1:
+                attrs["Path"] = tokens[-1]
+            return attrs
+
+        if row_kind == "net":
+            # 保留 Fanout/Cap 的定宽结果，仅从尾部补 Incr/Path，避免被坐标截断
+            if len(tokens) >= 2:
+                attrs["Incr"] = tokens[-2]
+                attrs["Path"] = tokens[-1]
+            elif len(tokens) == 1:
+                attrs["Path"] = tokens[-1]
+            return attrs
+
+        if row_kind == "pin":
+            # 典型行模式：
+            #   ... Cap  Trans   (x, y)   Incr   Path edge
+            # 只用最后两个数字推导 Incr/Path，Cap/Trans 仍用定宽解析结果。
+            if len(tokens) >= 2:
+                attrs["Incr"] = tokens[-2]
+                attrs["Path"] = tokens[-1]
+            elif len(tokens) == 1:
+                attrs["Path"] = tokens[-1]
+            return attrs
+
+        # 未知 row_kind，回退
         return attrs
 
     def _parseLaunchSegment(
