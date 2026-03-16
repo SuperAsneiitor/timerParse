@@ -105,7 +105,8 @@ python -m lib compare golden/path_summary.csv test/path_summary.csv -o out.csv -
 | `--no-charts` / `--no-html` | 禁用图表 / HTML 报告 |
 | `--stats-json` / `--stats-csv` | 统计 JSON/CSV 路径 |
 
-**输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`；比值与统计保留 3 位小数，mean 为绝对值均值。
+**输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`；比值与统计保留 3 位小数，mean 为绝对值均值。  
+其中 `compare_stats.json` 与 `compare_report.html` 会显式记录输入参数 `golden_file`、`test_file`，便于追溯对比来源。
 
 ---
 

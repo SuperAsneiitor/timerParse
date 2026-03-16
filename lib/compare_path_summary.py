@@ -131,7 +131,12 @@ def _pearson_corr(a: list[float], b: list[float]) -> float | None:
     return num / den
 
 
-def compute_stats(rows: list[dict], threshold: float = 10.0) -> dict:
+def compute_stats(
+    rows: list[dict],
+    threshold: float = 10.0,
+    golden_file: str = "",
+    test_file: str = "",
+) -> dict:
     stats_by_col = {}
     for col in RATIO_COLUMNS:
         vals = _to_number_list(rows, col)
@@ -178,6 +183,10 @@ def compute_stats(rows: list[dict], threshold: float = 10.0) -> dict:
         correlations[f"{c1}__{c2}"] = {"count": len(pair_vals), "pearson": _round3(_pearson_corr(xs, ys))}
 
     return {
+        "input_files": {
+            "golden_file": str(golden_file or ""),
+            "test_file": str(test_file or ""),
+        },
         "sample_count": len(rows),
         "metrics": stats_by_col,
         "correlations": correlations,
@@ -428,7 +437,12 @@ def run_compare(args) -> int:
         w.writerows(result)
 
     threshold = getattr(args, "threshold", 10.0)
-    stats = compute_stats(result, threshold=threshold)
+    stats = compute_stats(
+        result,
+        threshold=threshold,
+        golden_file=str(golden_path),
+        test_file=str(test_path),
+    )
     stats_json_path = Path(args.stats_json) if getattr(args, "stats_json", "").strip() else (out_path.parent / "compare_stats.json")
     write_stats_json(stats, stats_json_path)
 
@@ -454,6 +468,8 @@ def run_compare(args) -> int:
             charts_dir=charts_dir,
         )
 
+    log_util.brief(f"golden_file -> {golden_path}")
+    log_util.brief(f"test_file -> {test_path}")
     log_util.brief(f"Compared {len(result)} path(s) -> {out_path}")
     log_util.brief(f"Simplified -> {simple_path}")
     log_util.brief(f"Stats JSON -> {stats_json_path}")
