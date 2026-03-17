@@ -16,7 +16,7 @@ point_generator:
   net: { template: "{prefix}/n{net_index} (net)" }
   input_pin: { template: "{prefix}/U{pin_index}/{pin_name} ({cell_type})" }
   output_pin: { template: "{prefix}/U{pin_index}/{pin_name} ({cell_type})" }
-  endpoint: { template: "{startpoint_capture_ck}" }
+  endpoint: { template: "{endpoint_capture_ck}" }
   stat_adjust: { template: "statistical adjustment" }
   slack: { template: "slack (MET)" }
 

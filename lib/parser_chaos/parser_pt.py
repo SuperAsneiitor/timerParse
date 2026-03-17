@@ -33,6 +33,10 @@ _RE_CLOCK_RISE = re.compile(r"^\s+clock\s+\S+\s+\(rise\s+edge\)\s")
 _RE_DATA_ARRIVAL = re.compile(r"^\s+data\s+arrival\s+time\s")
 _RE_LIBRARY_SETUP = re.compile(r"^\s+library\s+(setup|hold)\s+time\s")
 _RE_CLOCK_SOURCE_LAT = re.compile(r"clock source latency", re.IGNORECASE)
+_RE_CAPTURE_TAIL = re.compile(
+    r"^\s+(clock reconvergence pessimism|clock uncertainty|library\s+(setup|hold)\s+time)\s",
+    re.IGNORECASE,
+)
 
 
 def _classify_row_kind(point: str, line: str, segment_row_index: int, in_launch: bool) -> str:
@@ -241,7 +245,7 @@ def _parseCaptureSegment(
             in_capture = True
             capture_start_idx = j
             continue
-        if in_capture and _RE_LIBRARY_SETUP.match(lines[j]):
+        if in_capture and _RE_CAPTURE_TAIL.match(lines[j]):
             for k in range(capture_start_idx, j):
                 raw_point, base_attrs = parseFixedWidthAttrs(lines[k], col_pos, ATTRS_ORDER)
                 if not raw_point:

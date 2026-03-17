@@ -60,6 +60,10 @@ class PtParser(Format1Parser):
     _re_clock_rise = re.compile(r"^\s+clock\s+\S+\s+\(rise\s+edge\)\s")
     _re_data_arrival = re.compile(r"^\s+data\s+arrival\s+time\s")
     _re_library_setup = re.compile(r"^\s+library\s+(setup|hold)\s+time\s")
+    _re_capture_tail = re.compile(
+        r"^\s+(clock reconvergence pessimism|clock uncertainty|library\s+(setup|hold)\s+time)\s",
+        re.IGNORECASE,
+    )
 
     def parseOnePath(
         self, path_id: int, path_text: str
@@ -154,7 +158,7 @@ class PtParser(Format1Parser):
                 in_capture = True
                 capture_start_idx = j
                 continue
-            if in_capture and self._re_library_setup.match(lines[j]):
+            if in_capture and self._re_capture_tail.match(lines[j]):
                 for k in range(capture_start_idx, j):
                     raw_point, base_attrs = self.parseFixedWidthAttrs(lines[k], col_pos, self.attrs_order)
                     if not raw_point:

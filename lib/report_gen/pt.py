@@ -26,12 +26,12 @@ class PtReport(TimingReportTemplate):
         return base
 
     @classmethod
-    def _capture_ck_from_startpoint(cls, startpoint: str) -> str:
-        base, cell = cls._strip_cell(startpoint)
+    def _capture_ck_from_endpoint(cls, endpoint: str) -> str:
+        base, cell = cls._strip_cell(endpoint)
         if "/" in base:
             inst = base.rsplit("/", 1)[0]
             return f"{inst}/CK{(' ' + cell) if cell else ''}".strip()
-        return startpoint
+        return endpoint
 
     def render_title_block(self, title_config: list[dict], path_ctx: dict[str, object]) -> str:
         lines: list[str] = []
@@ -171,7 +171,7 @@ class PtReport(TimingReportTemplate):
                 launch_rows,
                 capture_rows,
             )
-            path_ctx["startpoint_capture_ck"] = self._capture_ck_from_startpoint(str(path_ctx.get("startpoint", "")))
+            path_ctx["endpoint_capture_ck"] = self._capture_ck_from_endpoint(str(path_ctx.get("endpoint", "")))
             launch_pts = path_ctx.get("launch_points") or []
             capture_pts = path_ctx.get("capture_points") or []
 
@@ -249,7 +249,7 @@ class PtReport(TimingReportTemplate):
                 row_type = row_tmpl.get("type", "clock")
                 point_name = capture_pts[i] if i < len(capture_pts) else ""
                 if str(row_type).strip().lower() == "endpoint":
-                    point_name = self._capture_ck_from_startpoint(str(path_ctx.get("startpoint", "")))
+                    point_name = self._capture_ck_from_endpoint(str(path_ctx.get("endpoint", "")))
                 row_ctx = {**path_ctx, "path": path_ctx, "row_type": row_type, "row_index": len(launch_rows) + i, "point": point_name}
                 for target, source in plan.cumulative_rules.items():
                     src_cfg = plan.columns_config.get(source) or {}

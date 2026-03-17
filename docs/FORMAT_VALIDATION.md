@@ -85,6 +85,11 @@ table:
 - Format2 解析补强：支持 net 行 `Cap` 后缀 `xd`（如 `0.007 xd`）与 pin 行坐标块 `{ x y }` 共存；`lib` 与 `parser_chaos` 均采用“行类型 + 数值 token 顺序 + 正则提取”的语义解析，并统一跳过表头/分隔线，避免 debug 输出出现列切片撕裂。
 - Format2 的 port 行规则补齐：launch/capture 第三行 port 必须包含 `Delay`、`Time`、`Description`，并在 `Time` 与 `Description` 之间带边沿符号（`/` 或 `\`）；解析输出中 `trigger_edge` 必须为 `r/f`，`Description` 必须为 `<port_name> (in)`。
 - `scripts/validate_extract_results.py` 新增 format2 port 专项校验：自动检查 launch/capture 中 port 行的 `Delay/Time` 数值合法性、`trigger_edge` 是否为 `r/f`、`Description` 是否符合 `<name> (in)` 约束，避免回归。
+- `path_summary.csv` 新增 `clock_reconvergence_pessimism`、`clock_uncertainty` 两列，用于记录每条 path 的 clock reconvergence pessimism 与 clock uncertainty 增量；原先的 `uncertainty` 列已移除，统一使用 `clock_uncertainty`。
+- reconvergence/uncertainty 的提取逻辑统一为「按关键词 + 数值顺序」：  
+  - PT/format1：关键词在行首，数值在关键词后；从关键词后面的数值中取倒数第二个作为增量（Incr）；  
+  - format2：关键词在行尾 Description 中，数值在左侧 Delay/Time 列；若关键词后无数值，则从关键词前的整行数值中取倒数第二个作为增量（Delay）。
+- PT 生成器与解析器对 capture 段进行了对齐：capture_path 的最后一个点为 Endpoint 的时钟端 CK，`clock reconvergence pessimism` 与 `clock uncertainty` 只出现在 summary 段，不再混入 capture 点表。
 
 ### 推荐命令（不覆盖输出）
 

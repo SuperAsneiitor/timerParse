@@ -85,18 +85,37 @@ def parseFixedWidthAttrs(
 
 def fillUncertainty(lines: list[str], meta: dict[str, Any]) -> None:
     """
-    从 path 文本中解析 clock uncertainty 行，将数值写入 meta["uncertainty"]。
+    从 path 文本中解析 reconvergence/uncertainty，并兼容保留 uncertainty 别名列。
+    PT/format1：关键词在行首，数值在关键词后，取倒数第二个为 Incr。
+    format2：关键词在行尾 Description，数值在关键词前，取行首倒数第二个为 Delay。
     """
-    key = "clock uncertainty"
+    def _extractIncrementKeyword(line_text: str, keyword: str) -> str:
+        low = line_text.lower()
+        idx = low.find(keyword)
+        if idx < 0:
+            return ""
+        rest = line_text[idx + len(keyword) :]
+        nums_after = re.findall(r"-?\d+(?:\.\d+)?", rest)
+        if nums_after:
+            return nums_after[-2] if len(nums_after) >= 2 else nums_after[0]
+        prefix = line_text[:idx]
+        nums_before = re.findall(r"-?\d+(?:\.\d+)?", prefix)
+        if not nums_before:
+            return ""
+        return nums_before[-2] if len(nums_before) >= 2 else nums_before[-1]
+
+    reconv = ""
+    uncertainty = ""
     for line in lines:
-        if key in line.lower():
-            idx = line.lower().find(key)
-            rest = line[idx + len(key) :]
-            m = re.search(r"(-?\d+\.\d+)", rest)
-            if m:
-                meta["uncertainty"] = m.group(1).strip()
+        low = line.lower()
+        if not reconv and "clock reconvergence pessimism" in low:
+            reconv = _extractIncrementKeyword(line, "clock reconvergence pessimism")
+        if not uncertainty and "clock uncertainty" in low:
+            uncertainty = _extractIncrementKeyword(line, "clock uncertainty")
+        if reconv and uncertainty:
             break
-    meta.setdefault("uncertainty", "")
+    meta["clock_reconvergence_pessimism"] = reconv
+    meta["clock_uncertainty"] = uncertainty
 
 
 def sumDelayInRows(rows: list[dict[str, Any]], delay_attr: str) -> float:

@@ -74,8 +74,9 @@ class TimeParser(ABC):
             "endpoint",
             "arrival_time",
             "required_time",
+            "clock_reconvergence_pessimism",
+            "clock_uncertainty",
             "slack",
-            "uncertainty",
             "launch_clock_point_count",
             "data_path_point_count",
             "capture_point_count",
@@ -85,17 +86,38 @@ class TimeParser(ABC):
 
     @staticmethod
     def _fillUncertainty(lines: list[str], meta: dict[str, Any]) -> None:
-        """从 path 文本中解析 clock uncertainty 行，将数值写入 meta["uncertainty"]。"""
-        key = "clock uncertainty"
+        """从 path 文本中解析 reconvergence/uncertainty，并兼容保留 uncertainty 别名列。
+        PT/format1：关键词在行首，数值在关键词后（Incr/Path），取倒数第二个为 Incr。
+        format2：关键词在行尾 Description，数值在关键词前（Delay/Time），从行首取倒数第二个为 Delay。
+        """
+        def _extractIncrementKeyword(line_text: str, keyword: str) -> str:
+            low = line_text.lower()
+            idx = low.find(keyword)
+            if idx < 0:
+                return ""
+            # 关键词后的部分（PT/format1：Incr, Path 等）
+            rest = line_text[idx + len(keyword) :]
+            nums_after = re.findall(r"-?\d+(?:\.\d+)?", rest)
+            if nums_after:
+                return nums_after[-2] if len(nums_after) >= 2 else nums_after[0]
+            # 关键词前取数（format2：Delay, Time 在 Description 左侧）
+            prefix = line_text[:idx]
+            nums_before = re.findall(r"-?\d+(?:\.\d+)?", prefix)
+            if not nums_before:
+                return ""
+            return nums_before[-2] if len(nums_before) >= 2 else nums_before[-1]
+        reconv = ""
+        uncertainty = ""
         for line in lines:
-            if key in line.lower():
-                idx = line.lower().find(key)
-                rest = line[idx + len(key) :]
-                m = re.search(r"(-?\d+\.\d+)", rest)
-                if m:
-                    meta["uncertainty"] = m.group(1).strip()
+            low = line.lower()
+            if not reconv and "clock reconvergence pessimism" in low:
+                reconv = _extractIncrementKeyword(line, "clock reconvergence pessimism")
+            if not uncertainty and "clock uncertainty" in low:
+                uncertainty = _extractIncrementKeyword(line, "clock uncertainty")
+            if reconv and uncertainty:
                 break
-        meta.setdefault("uncertainty", "")
+        meta["clock_reconvergence_pessimism"] = reconv
+        meta["clock_uncertainty"] = uncertainty
 
     @staticmethod
     def _normalizePin(pin: str) -> str:

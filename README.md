@@ -23,7 +23,7 @@ python -m lib <子命令> [参数...]
 | **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html` | 按 path_id 对齐 → 算 (test−golden)/golden×100% → 统计（绝对值均值、3 位小数）、阈值、相关性 → 可选画图与 HTML |
 | **生成 Timing 报告** | `gen-report` | YAML 配置文件 | 指定格式的 timing 报告文件（.rpt） | 按 YAML 生成每条 path 的 Title（Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等）与 path 表格；支持固定值、枚举、随机数、模板等取值方式，列顺序可配置 |
 
-`path_summary.csv` 列：`path_id,startpoint,endpoint,arrival_time,required_time,slack,uncertainty,launch_clock_point_count,data_path_point_count,capture_point_count,launch_clock_delay,data_path_delay`。
+`path_summary.csv` 列：`path_id,startpoint,endpoint,arrival_time,required_time,clock_reconvergence_pessimism,clock_uncertainty,slack,launch_clock_point_count,data_path_point_count,capture_point_count,launch_clock_delay,data_path_delay`。
 
 ---
 
