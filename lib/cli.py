@@ -49,6 +49,20 @@ def build_parser() -> argparse.ArgumentParser:
         "-j", "--jobs", type=int, default=1, metavar="N",
         help="并行 worker 数，默认 1",
     )
+    ext.add_argument(
+        "-p",
+        "--paths-per-shard",
+        type=int,
+        default=0,
+        metavar="N",
+        help="按 path 数拆分输出文件：每 N 条 path 生成一组 *_partK.csv（0=不拆分，默认）",
+    )
+    ext.add_argument(
+        "-m",
+        "--merge-launch",
+        action="store_true",
+        help="当启用分片输出时，额外合并生成 launch_path.csv（默认不生成）",
+    )
 
     # gen-pt
     gp = subparsers.add_parser("gen-pt", help="根据 launch_path.csv 生成 PrimeTime report_timing TCL", parents=[parent])
@@ -63,6 +77,13 @@ def build_parser() -> argparse.ArgumentParser:
     gp.add_argument("-w", "--no-wrap", action="store_true", help="每条 report_timing 单行输出（不换行）")
     gp.add_argument("-e", "--extra", default="", metavar="ARGS", help="额外 report_timing 参数（原样拼到命令末尾）")
     gp.add_argument("-r", "--report-file", default="report_file.rpt", metavar="RPT", help="TCL 中输出文件名（report_file）")
+    gp.add_argument(
+        "-g",
+        "--launch-glob",
+        default="",
+        metavar="GLOB",
+        help="可选：使用通配符读取多个 launch_path CSV（例如 out/launch_path_part*.csv）；优先级高于位置参数",
+    )
     gp.add_argument("-j", "--jobs", type=int, default=1, metavar="N", help="多进程 worker 数")
 
     # compare

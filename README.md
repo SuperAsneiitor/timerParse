@@ -42,6 +42,11 @@ python -m lib extract path/to/report.rpt -f pt -o output
 
 # 多进程解析
 python -m lib extract path/to/report.rpt -o output -j 4
+
+# 大文件：按 path 数拆分输出（每 10000 条 path 一组 *_partK.csv）
+# 默认仍会合并生成 path_summary.csv；如需同时生成合并后的 launch_path.csv，加 -m/--merge-launch
+python -m lib extract path/to/report.rpt -o output -j 4 -p 10000
+python -m lib extract path/to/report.rpt -o output -j 4 -p 10000 -m
 ```
 
 | 参数 | 说明 |
@@ -50,6 +55,8 @@ python -m lib extract path/to/report.rpt -o output -j 4
 | `-o`, `--output-dir` | 输出目录，默认 `output_lib` |
 | `-f`, `--format` | `auto` / `format1` / `format2` / `pt` / `apr`（默认 `auto`） |
 | `-j`, `--jobs` | 并行 worker 数，默认 1 |
+| `-p`, `--paths-per-shard` | 按 path 数拆分输出文件：每 N 条 path 生成一组 `*_partK.csv`（0=不拆分，默认） |
+| `-m`, `--merge-launch` | 当启用分片输出时，额外合并生成 `launch_path.csv`（默认不生成；建议配合 gen-pt 使用） |
 
 **输出文件**：`launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv`（含 launch_clock_point_count、data_path_point_count、capture_point_count、launch_clock_delay、data_path_delay）。
 
@@ -61,7 +68,10 @@ python -m lib extract path/to/report.rpt -o output -j 4
 另一套**独立实现**位于 `lib/parser_chaos`，采用 1 个报告分割器进程 + N 个解析器 Worker 进程 + 队列的架构，与 `lib/parsers` 无任何引用关系。适合需要「分割与解析分离、动态分配任务」的场景。
 
 ```bash
-python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --format auto -j 4
+python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos -f auto -j 4
+
+# 大文件：按 path 数拆分输出（每 10000 条 path 一组 *_partK.csv）
+python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos -f auto -j 4 -p 10000
 ```
 
 详见 [docs/parser_chaos.md](docs/parser_chaos.md)。跨机迁移或恢复会话上下文可参考 [docs/SESSION_MIGRATION.md](docs/SESSION_MIGRATION.md)。
@@ -74,6 +84,9 @@ python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --
 python -m lib gen-pt output/launch_path.csv -o output/report_timing.tcl
 python -m lib gen-pt -n 10 -w -e "-delay_type max"
 python -m lib gen-pt -j 4
+
+# 分片输入：直接读取多个 launch_path 分片（无需先 merge 成一个大 CSV）
+python -m lib gen-pt -g "output/launch_path_part*.csv" -o output/report_timing.tcl
 ```
 
 | 参数 | 说明 |
@@ -84,6 +97,7 @@ python -m lib gen-pt -j 4
 | `-w`, `--no-wrap` | 每条 report_timing 单行输出（不换行） |
 | `-e`, `--extra` | 额外 report_timing 参数（原样拼到命令末尾） |
 | `-r`, `--report-file` | TCL 中输出文件名变量 |
+| `-g`, `--launch-glob` | 可选：使用通配符读取多个 launch_path CSV（例如 `out/launch_path_part*.csv`）；优先级高于位置参数 |
 | `-j`, `--jobs` | 多进程 worker 数 |
 
 ---

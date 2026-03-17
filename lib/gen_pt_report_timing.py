@@ -12,6 +12,7 @@ import re
 import sys
 from collections import defaultdict
 from multiprocessing import Pool, cpu_count
+from pathlib import Path
 from typing import List
 
 from . import log_util
@@ -70,6 +71,34 @@ def load_launch_paths(csv_path: str) -> tuple[dict[int, list[dict]], list[str]]:
     for pid in by_path:
         by_path[pid].sort(key=lambda r: int(r["point_index"]))
     return dict(by_path), metric_columns
+
+
+def iterLaunchPathsFromCsv(csv_path: str):
+    """按 path_id 分组迭代读取单个 launch_path CSV，返回 (path_id, rows, metric_columns)。"""
+    FIXED_COLUMNS = frozenset({
+        "path_id", "startpoint", "endpoint", "startpoint_clock", "endpoint_clock",
+        "slack", "slack_status", "point_index", "point",
+    })
+    metric_columns: list[str] = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames:
+            metric_columns = [c for c in reader.fieldnames if c not in FIXED_COLUMNS]
+        current_pid: int | None = None
+        current_rows: list[dict] = []
+        for row in reader:
+            pid = int(row["path_id"])
+            if current_pid is None:
+                current_pid = pid
+            if pid != current_pid:
+                current_rows.sort(key=lambda r: int(r.get("point_index") or 0))
+                yield current_pid, current_rows, metric_columns
+                current_pid = pid
+                current_rows = []
+            current_rows.append(row)
+        if current_pid is not None:
+            current_rows.sort(key=lambda r: int(r.get("point_index") or 0))
+            yield current_pid, current_rows, metric_columns
 
 
 def _strip_cell_type(point: str) -> str:
@@ -165,69 +194,78 @@ def _worker_build_command(
 
 def run_gen_pt(args) -> int:
     """执行 gen-pt 子命令。args 需有 launch_csv, output, max_paths, no_wrap, extra, report_file, jobs。"""
-    csv_path = os.path.abspath(args.launch_csv)
-    if not os.path.isfile(csv_path):
-        log_util.error(f"Error: launch_path CSV not found: {csv_path}")
-        return 1
+    launch_glob = (getattr(args, "launch_glob", "") or "").strip()
+    launch_csv = (getattr(args, "launch_csv", "") or "").strip()
+    csv_inputs: list[str] = []
+    if launch_glob:
+        csv_inputs = [str(p) for p in sorted(Path().glob(launch_glob))]
+    else:
+        # 兼容：位置参数若包含通配符，也按 glob 处理
+        if any(ch in launch_csv for ch in ["*", "?", "["]):
+            csv_inputs = [str(p) for p in sorted(Path().glob(launch_csv))]
+        else:
+            csv_inputs = [os.path.abspath(launch_csv)]
 
-    paths, metric_columns = load_launch_paths(csv_path)
-    path_ids = sorted(paths.keys())
+    csv_inputs = [os.path.abspath(p) for p in csv_inputs if p]
+    if not csv_inputs:
+        log_util.error("Error: 未找到任何 launch_path CSV 输入。")
+        log_util.error("  用法1：python -m lib gen-pt path/to/launch_path.csv")
+        log_util.error("  用法2：python -m lib gen-pt -g \"out/launch_path_part*.csv\"")
+        return 1
+    for p in csv_inputs:
+        if not os.path.isfile(p):
+            log_util.error(f"Error: launch_path CSV not found: {p}")
+            return 1
+
+    out_path = os.path.abspath(getattr(args, "output", "output/report_timing.tcl"))
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+
+    max_paths = int(getattr(args, "max_paths", 0) or 0)
+    wrap = not getattr(args, "no_wrap", False)
+    extra_args = getattr(args, "extra", "")
+
+    written = 0
+    metric_columns: list[str] = []
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("# PrimeTime report_timing script generated from launch_path.csv\n")
+        f.write("# -from / -to: [get_clocks clock]\n")
+        f.write("# -rise_through / -fall_through are driven by trigger_edge (r/f) when available\n")
+        f.write(f"set output_file \"{args.report_file}\"\n")
+        f.write("sh rm -rf ${output_file}\n")
+        f.write("sh touch ${output_file}\n\n")
+
+        for csv_path in csv_inputs:
+            for pid, rows, cols in iterLaunchPathsFromCsv(csv_path):
+                if cols and not metric_columns:
+                    metric_columns = cols
+                if not rows:
+                    continue
+                if max_paths > 0 and written >= max_paths:
+                    break
+                start = rows[0].get("startpoint", "")
+                startpoint_clock = rows[0].get("startpoint_clock", "").strip()
+                endpoint_clock = rows[0].get("endpoint_clock", "").strip()
+                through_list = build_through_args(rows, start)
+                f.write(
+                    format_report_timing(
+                        pid,
+                        startpoint_clock,
+                        endpoint_clock,
+                        through_list,
+                        extra_args=extra_args,
+                        wrap=wrap,
+                        startpoint_pin=start,
+                        endpoint_pin=rows[0].get("endpoint", ""),
+                        output_var_expr="${output_file}",
+                    )
+                )
+                written += 1
+            if max_paths > 0 and written >= max_paths:
+                break
+
     if metric_columns:
         log_util.full(f"CSV 指标列: {', '.join(metric_columns)}")
-    log_util.full(f"path 数: {len(path_ids)}, 输出: {args.output}")
-    if getattr(args, "max_paths", 0) > 0:
-        path_ids = path_ids[: args.max_paths]
-
-    lines = [
-        "# PrimeTime report_timing script generated from launch_path.csv",
-        "# -from / -to: [get_clocks clock]",
-        "# -rise_through / -fall_through are driven by trigger_edge (r/f) when available",
-        f"set output_file \"{args.report_file}\"",
-        "sh rm -rf ${output_file}",
-        "sh touch ${output_file}",
-        "",
-    ]
-    jobs = getattr(args, "jobs", 1) or max(1, cpu_count() - 1)
-    if len(path_ids) < 100:
-        jobs = 1
-
-    if jobs <= 1:
-        for pid in path_ids:
-            rows = paths[pid]
-            if not rows:
-                continue
-            start = rows[0]["startpoint"]
-            startpoint_clock = rows[0].get("startpoint_clock", "").strip()
-            endpoint_clock = rows[0].get("endpoint_clock", "").strip()
-            through_list = build_through_args(rows, start)
-            lines.append(
-                format_report_timing(
-                    pid,
-                    startpoint_clock,
-                    endpoint_clock,
-                    through_list,
-                    extra_args=getattr(args, "extra", ""),
-                    wrap=not getattr(args, "no_wrap", False),
-                    startpoint_pin=start,
-                    endpoint_pin=rows[0].get("endpoint", ""),
-                    output_var_expr="${output_file}",
-                )
-            )
-    else:
-        worker_args = [
-            (pid, paths[pid], getattr(args, "extra", ""), not getattr(args, "no_wrap", False), args.report_file)
-            for pid in path_ids
-        ]
-        with Pool(processes=jobs) as pool:
-            cmds: List[str] = pool.map(_worker_build_command, worker_args)
-        for cmd in cmds:
-            if cmd:
-                lines.append(cmd)
-
-    out_path = os.path.abspath(args.output)
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-    log_util.brief(f"Wrote {len(path_ids)} report_timing commands -> {out_path}")
+    log_util.brief(f"Wrote {written} report_timing commands -> {out_path}")
+    if len(csv_inputs) > 1:
+        log_util.full(f"Inputs: {len(csv_inputs)} files")
     return 0

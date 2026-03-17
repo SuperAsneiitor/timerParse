@@ -44,6 +44,8 @@ def runWorkerProcess(
             result_queue.put((path_id, meta, launch_rows, capture_rows))
         except Exception as e:
             result_queue.put(e)
+            result_queue.put(RESULT_SENTINEL)
+            return
 
 
 def getParserForFormat(format_key: str):

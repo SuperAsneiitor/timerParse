@@ -41,6 +41,20 @@ def main() -> int:
     )
     parser.add_argument("-j", "--jobs", type=int, default=3, metavar="N", help="解析器 Worker 进程数，默认 3")
     parser.add_argument(
+        "-p",
+        "--paths-per-shard",
+        type=int,
+        default=0,
+        metavar="N",
+        help="按 path 数拆分输出文件：每 N 条 path 生成一组 *_partK.csv（0=不拆分，默认）",
+    )
+    parser.add_argument(
+        "-m",
+        "--merge-launch",
+        action="store_true",
+        help="当启用分片输出时，额外合并生成 launch_path.csv（默认不生成）",
+    )
+    parser.add_argument(
         "-l",
         "--log-level",
         choices=["brief", "full"],
@@ -53,6 +67,8 @@ def main() -> int:
         output_dir=args.output_dir,
         format_key=args.format,
         num_workers=args.jobs,
+        paths_per_shard=args.paths_per_shard,
+        merge_launch=args.merge_launch,
         log_level=args.log_level,
     )
 

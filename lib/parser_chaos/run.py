@@ -9,10 +9,11 @@ from __future__ import annotations
 import csv
 import os
 import sys
+from pathlib import Path
 from multiprocessing import Process, Queue
 
 from .. import log_util
-from .aggregator import aggregateResults, isResultSentinel
+from .aggregator import isResultSentinel, splitLaunchByCommonPin
 from .constants import (
     FORMAT1,
     FORMAT_FORMAT2,
@@ -46,6 +47,8 @@ def runExtractChaos(
     output_dir: str,
     format_key: str,
     num_workers: int,
+    paths_per_shard: int = 0,
+    merge_launch: bool = False,
     log_level: str = "brief",
 ) -> int:
     """
@@ -90,20 +93,33 @@ def runExtractChaos(
     for w in workers:
         w.start()
 
+    delay_attr = _DELAY_ATTR.get(format_key, "Incr")
     try:
-        results = collectResults(result_queue, num_workers)
+        if int(paths_per_shard or 0) > 0:
+            collectAndWriteSharded(
+                result_queue=result_queue,
+                num_workers=num_workers,
+                output_dir=output_dir,
+                format_key=format_key,
+                delay_attr=delay_attr,
+                paths_per_shard=int(paths_per_shard),
+                merge_summary=True,
+                merge_launch=bool(merge_launch),
+            )
+            log_util.brief(f"Sharded output enabled: {int(paths_per_shard)} path(s) per file")
+            if merge_launch:
+                log_util.full("Merged launch_path.csv enabled for sharded output")
+        else:
+            results = collectResults(result_queue, num_workers)
+            if not results:
+                log_util.error("No paths parsed.")
+                return 0
+            output = aggregateResultsLegacy(results, delay_attr=delay_attr)
+            writeOutputCsv(output, output_dir, format_key)
     finally:
         splitter_proc.join()
         for w in workers:
             w.join()
-
-    if not results:
-        log_util.error("No paths parsed.")
-        return 0
-
-    delay_attr = _DELAY_ATTR.get(format_key, "Incr")
-    output = aggregateResults(results, delay_attr=delay_attr)
-    writeOutputCsv(output, output_dir, format_key)
     return 0
 
 
@@ -125,6 +141,118 @@ def collectResults(result_queue: Queue, num_workers: int) -> list:
             raise item
         results.append(item)
     return results
+
+
+def aggregateResultsLegacy(results: list, delay_attr: str) -> "ParseOutput":
+    """兼容旧实现：一次性聚合全部结果，保留给非分片模式。"""
+    # 延迟导入以避免与分片逻辑混淆
+    from .aggregator import aggregateResults
+
+    return aggregateResults(results, delay_attr=delay_attr)
+
+
+def collectAndWriteSharded(
+    result_queue: Queue,
+    num_workers: int,
+    output_dir: str,
+    format_key: str,
+    delay_attr: str,
+    paths_per_shard: int,
+    merge_summary: bool = True,
+    merge_launch: bool = False,
+) -> None:
+    """从 result_queue 边收集边按 path 数分片写出 CSV，并可在末尾合并 summary/launch。"""
+    os.makedirs(output_dir, exist_ok=True)
+    attrs_order = _FORMAT_ATTRS.get(format_key, FORMAT1_ATTRS)
+    semantic_attrs = list(dict.fromkeys(SEMANTIC_POINT_ATTRS + attrs_order))
+    base_cols = POINT_BASE_COLUMNS + semantic_attrs
+    launch_cols = POINT_BASE_COLUMNS + ["path_type"] + semantic_attrs
+
+    shard_index = 1
+    shard_paths: list[tuple[int, dict, list[dict], list[dict]]] = []
+    end_count = 0
+    total_paths = 0
+
+    def _flushShard() -> None:
+        nonlocal shard_index, shard_paths
+        if not shard_paths:
+            return
+        shard_paths_sorted = sorted(shard_paths, key=lambda x: x[0])
+        launch_rows: list[dict] = []
+        capture_rows: list[dict] = []
+        launch_clock_rows: list[dict] = []
+        data_path_rows: list[dict] = []
+        summary_rows: list[dict] = []
+
+        for _path_id, meta, launch, capture in shard_paths_sorted:
+            lc, dp, lc_n, dp_n, lc_delay, dp_delay = splitLaunchByCommonPin(
+                launch, meta.get("startpoint", ""), delay_attr=delay_attr
+            )
+            meta["launch_clock_point_count"] = lc_n
+            meta["data_path_point_count"] = dp_n
+            meta["capture_point_count"] = len(capture)
+            # cleanMetricFloat 在 utils 中，aggregateResults 里也用；这里复用旧逻辑
+            from .utils import cleanMetricFloat
+
+            meta["launch_clock_delay"] = cleanMetricFloat(lc_delay)
+            meta["data_path_delay"] = cleanMetricFloat(dp_delay)
+            summary_rows.append(meta)
+            launch_rows.extend(launch)
+            capture_rows.extend(capture)
+            launch_clock_rows.extend(lc)
+            data_path_rows.extend(dp)
+
+        suffix = f"_part{shard_index}.csv"
+        _writeCsv(os.path.join(output_dir, f"launch_path{suffix}"), launch_rows, launch_cols)
+        _writeCsv(os.path.join(output_dir, f"capture_path{suffix}"), capture_rows, base_cols)
+        _writeCsv(os.path.join(output_dir, f"path_summary{suffix}"), summary_rows, SUMMARY_COLUMNS)
+        _writeCsv(os.path.join(output_dir, f"launch_clock_path{suffix}"), launch_clock_rows, base_cols)
+        _writeCsv(os.path.join(output_dir, f"data_path{suffix}"), data_path_rows, base_cols)
+
+        shard_index += 1
+        shard_paths = []
+
+    while end_count < num_workers:
+        item = result_queue.get()
+        if isResultSentinel(item):
+            end_count += 1
+            continue
+        if isinstance(item, Exception):
+            raise item
+        path_id, meta, launch, capture = item
+        shard_paths.append((path_id, meta, launch, capture))
+        total_paths += 1
+        if paths_per_shard > 0 and len(shard_paths) >= paths_per_shard:
+            _flushShard()
+
+    _flushShard()
+
+    if merge_summary:
+        _mergeCsvParts(output_dir, "path_summary", merged_name="path_summary.csv")
+    if merge_launch:
+        _mergeCsvParts(output_dir, "launch_path", merged_name="launch_path.csv")
+
+    log_util.brief(f"Wrote sharded outputs for {total_paths} path(s) -> {output_dir}")
+
+
+def _mergeCsvParts(output_dir: str, base_name: str, merged_name: str | None = None) -> str:
+    """将 base_name_part*.csv 合并为单个 CSV，并返回合并后的路径。"""
+    merged_name = merged_name or f"{base_name}.csv"
+    out_path = str(Path(output_dir) / merged_name)
+    parts = sorted(Path(output_dir).glob(f"{base_name}_part*.csv"))
+    if not parts:
+        return out_path
+    writer = None
+    with open(out_path, "w", encoding="utf-8-sig", newline="") as out_f:
+        for i, p in enumerate(parts):
+            with open(str(p), "r", encoding="utf-8-sig", newline="") as in_f:
+                reader = csv.DictReader(in_f)
+                if i == 0:
+                    writer = csv.DictWriter(out_f, fieldnames=reader.fieldnames or [])
+                    writer.writeheader()
+                for row in reader:
+                    writer.writerow(row)
+    return out_path
 
 
 def writeOutputCsv(output: ParseOutput, output_dir: str, format_key: str) -> None:
