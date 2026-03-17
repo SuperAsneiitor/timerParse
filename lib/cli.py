@@ -78,6 +78,18 @@ def build_parser() -> argparse.ArgumentParser:
     gp.add_argument("-e", "--extra", default="", metavar="ARGS", help="额外 report_timing 参数（原样拼到命令末尾）")
     gp.add_argument("-r", "--report-file", default="report_file.rpt", metavar="RPT", help="TCL 中输出文件名（report_file）")
     gp.add_argument(
+        "-rise_cmd",
+        default="-rise_through",
+        metavar="FLAG",
+        help="上升沿通过点的参数名（默认：-rise_through）",
+    )
+    gp.add_argument(
+        "-fall_cmd",
+        default="-fall_through",
+        metavar="FLAG",
+        help="下降沿通过点的参数名（默认：-fall_through）",
+    )
+    gp.add_argument(
         "-g",
         "--launch-glob",
         default="",

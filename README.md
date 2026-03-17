@@ -97,6 +97,8 @@ python -m lib gen-pt -g "output/launch_path_part*.csv" -o output/report_timing.t
 | `-w`, `--no-wrap` | 每条 report_timing 单行输出（不换行） |
 | `-e`, `--extra` | 额外 report_timing 参数（原样拼到命令末尾） |
 | `-r`, `--report-file` | TCL 中输出文件名变量 |
+| `-rise_cmd` | 上升沿通过点的参数名（默认：`-rise_through`） |
+| `-fall_cmd` | 下降沿通过点的参数名（默认：`-fall_through`） |
 | `-g`, `--launch-glob` | 可选：使用通配符读取多个 launch_path CSV（例如 `out/launch_path_part*.csv`）；优先级高于位置参数 |
 | `-j`, `--jobs` | 多进程 worker 数 |
 

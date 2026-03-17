@@ -107,7 +107,12 @@ def _strip_cell_type(point: str) -> str:
     return point.strip()
 
 
-def build_through_args(points: list[dict], startpoint: str) -> list[tuple[str, str]]:
+def build_through_args(
+    points: list[dict],
+    startpoint: str,
+    rise_cmd: str = "-rise_through",
+    fall_cmd: str = "-fall_through",
+) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     found_start = False
     for row in points:
@@ -122,9 +127,9 @@ def build_through_args(points: list[dict], startpoint: str) -> list[tuple[str, s
         if kind is None:
             continue
         if kind == "rise":
-            out.append(("-rise_through", pin_ref))
+            out.append(((rise_cmd or "-rise_through").strip(), pin_ref))
         else:
-            out.append(("-fall_through", pin_ref))
+            out.append(((fall_cmd or "-fall_through").strip(), pin_ref))
     return out
 
 
@@ -223,6 +228,8 @@ def run_gen_pt(args) -> int:
     max_paths = int(getattr(args, "max_paths", 0) or 0)
     wrap = not getattr(args, "no_wrap", False)
     extra_args = getattr(args, "extra", "")
+    rise_cmd = getattr(args, "rise_cmd", "-rise_through")
+    fall_cmd = getattr(args, "fall_cmd", "-fall_through")
 
     written = 0
     metric_columns: list[str] = []
@@ -245,7 +252,7 @@ def run_gen_pt(args) -> int:
                 start = rows[0].get("startpoint", "")
                 startpoint_clock = rows[0].get("startpoint_clock", "").strip()
                 endpoint_clock = rows[0].get("endpoint_clock", "").strip()
-                through_list = build_through_args(rows, start)
+                through_list = build_through_args(rows, start, rise_cmd=rise_cmd, fall_cmd=fall_cmd)
                 f.write(
                     format_report_timing(
                         pid,
