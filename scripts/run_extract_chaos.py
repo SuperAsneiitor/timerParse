@@ -20,23 +20,32 @@ from lib.parser_chaos import runExtractChaos
 
 
 def main() -> int:
+    # 尽量保证 Windows 下中文输出不乱码
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         description="parser_chaos：1 个分割器 + N 个解析器进程，队列式解析 Timing 报告并输出 CSV。"
     )
     parser.add_argument("input_rpt", help="输入 timing 报告文件路径")
-    parser.add_argument("-o", "--output-dir", default="output_parser_chaos", help="输出目录")
+    parser.add_argument("-o", "--output-dir", default="output_parser_chaos", help="输出目录（默认：output_parser_chaos）")
     parser.add_argument(
+        "-f",
         "--format",
         choices=["auto", "format1", "format2", "pt", "apr"],
         default="auto",
-        help="报告格式，默认 auto 自动识别",
+        help="报告格式（默认：auto 自动识别）",
     )
     parser.add_argument("-j", "--jobs", type=int, default=3, metavar="N", help="解析器 Worker 进程数，默认 3")
     parser.add_argument(
+        "-l",
         "--log-level",
         choices=["brief", "full"],
         default="brief",
-        help="日志等级：brief 每步一行汇总，full 多行展开（默认 brief）",
+        help="日志等级：brief=每步一行汇总；full=多行展开（默认：brief）",
     )
     args = parser.parse_args()
     return runExtractChaos(

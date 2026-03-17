@@ -178,13 +178,21 @@ def validateOneExtractDir(extract_dir: Path, fmt: str) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="校验 extract 结果格式与关键语义字段。")
-    parser.add_argument("--validation-base", default="", help="validation_flow_* 目录路径")
-    parser.add_argument("--extract-dir", default="", help="单个 extract 目录路径")
+    # 尽量保证 Windows 下中文输出不乱码
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+    parser.add_argument("-v", "--validation-base", default="", help="validation_flow_* 目录路径（包含 extract_format1/2/pt）")
+    parser.add_argument("-d", "--extract-dir", default="", help="单个 extract 目录路径（与 -f 配合使用）")
     parser.add_argument(
+        "-f",
         "--format",
         choices=["format1", "format2", "pt"],
         default="",
-        help="当使用 --extract-dir 时指定格式",
+        help="当使用 -d/--extract-dir 时指定格式",
     )
     args = parser.parse_args(argv)
 
