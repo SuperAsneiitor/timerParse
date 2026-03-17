@@ -20,19 +20,28 @@ def run(cmd: list[str], cwd: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 尽量保证 Windows 下中文输出不乱码
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         description="固定验证流：生成3格式 -> 解析3格式 -> PT作golden对比format1/format2"
     )
-    parser.add_argument("--jobs", type=int, default=4, help="extract 并行 worker 数")
-    parser.add_argument("--seed-format1", type=int, default=101)
-    parser.add_argument("--seed-format2", type=int, default=202)
-    parser.add_argument("--seed-pt", type=int, default=303)
+    parser.add_argument("-j", "--jobs", type=int, default=4, help="extract 并行 worker 数（默认：4）")
+    parser.add_argument("--seed-format1", type=int, default=101, help="format1 生成随机种子（默认：101）")
+    parser.add_argument("--seed-format2", type=int, default=202, help="format2 生成随机种子（默认：202）")
+    parser.add_argument("--seed-pt", type=int, default=303, help="pt 生成随机种子（默认：303）")
     parser.add_argument(
+        "-o",
         "--output-base",
         default="",
         help="可选输出目录；默认 test_results/validation_flow_YYYYMMDD_HHMMSS",
     )
     parser.add_argument(
+        "-l",
         "--log-level",
         choices=["brief", "full"],
         default="brief",
@@ -166,7 +175,9 @@ def main(argv: list[str] | None = None) -> int:
             "-m",
             "lib",
             "compare",
+            "-g",
             str(expt / "path_summary.csv"),
+            "-t",
             str(ex1 / "path_summary.csv"),
             "-o",
             str(cmpd / "pt_vs_format1.csv"),
@@ -185,7 +196,9 @@ def main(argv: list[str] | None = None) -> int:
             "-m",
             "lib",
             "compare",
+            "-g",
             str(expt / "path_summary.csv"),
+            "-t",
             str(ex2 / "path_summary.csv"),
             "-o",
             str(cmpd / "pt_vs_format2.csv"),

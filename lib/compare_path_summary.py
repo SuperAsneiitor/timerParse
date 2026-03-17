@@ -397,9 +397,22 @@ def generate_html_report(
 
 
 def run_compare(args) -> int:
-    """执行 compare 子命令。args 需有 golden_file, test_file, output, threshold, bins, charts_dir, no_charts, no_html, stats_json, stats_csv。"""
-    golden_path = Path(args.golden_file)
-    test_path = Path(args.test_file)
+    """执行 compare 子命令。
+
+    兼容两种传参方式：
+    - 新用法：-g/--golden-file, -t/--test-file
+    - 旧用法：位置参数 golden_file test_file
+    """
+    golden_file = (getattr(args, "golden_file_opt", "") or getattr(args, "golden_file", "") or "").strip()
+    test_file = (getattr(args, "test_file_opt", "") or getattr(args, "test_file", "") or "").strip()
+    if not golden_file or not test_file:
+        log_util.error("Error: compare 需要提供 golden/test 两个输入文件。")
+        log_util.error("  推荐：python -m lib compare -g <golden_path_summary.csv> -t <test_path_summary.csv>")
+        log_util.error("  兼容：python -m lib compare <golden_path_summary.csv> <test_path_summary.csv>")
+        return 2
+
+    golden_path = Path(golden_file)
+    test_path = Path(test_file)
     if not golden_path.is_file():
         log_util.error(f"Error: golden file not found: {golden_path}")
         return 1
