@@ -8,7 +8,7 @@
 python -m lib <子命令> [参数...]
 ```
 
-所有子命令支持 **`--log-level brief|full`**：`brief` 为每步一行汇总（默认），`full` 为多行展开（如各 CSV 路径与行数、列名等）。
+所有子命令支持 **`-l/--log-level brief|full`**：`brief` 为每步一行汇总（默认），`full` 为多行展开（如各 CSV 路径与行数、列名等）。
 
 **仓库中不包含测试数据与测试结果**：`input/` 及各类 `output*/` 已通过 `.gitignore` 排除。
 
@@ -37,8 +37,8 @@ python -m lib path/to/report.rpt -o path/to/output
 python -m lib extract path/to/report.rpt -o path/to/output
 
 # 显式指定格式
-python -m lib extract path/to/report.rpt --format format1 -o output
-python -m lib extract path/to/report.rpt --format pt -o output
+python -m lib extract path/to/report.rpt -f format1 -o output
+python -m lib extract path/to/report.rpt -f pt -o output
 
 # 多进程解析
 python -m lib extract path/to/report.rpt -o output -j 4
@@ -48,7 +48,7 @@ python -m lib extract path/to/report.rpt -o output -j 4
 |------|------|
 | `input_rpt` | Timing 报告文件路径 |
 | `-o`, `--output-dir` | 输出目录，默认 `output_lib` |
-| `--format` | `auto` / `format1` / `format2` / `pt` / `apr`（默认 `auto`） |
+| `-f`, `--format` | `auto` / `format1` / `format2` / `pt` / `apr`（默认 `auto`） |
 | `-j`, `--jobs` | 并行 worker 数，默认 1 |
 
 **输出文件**：`launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv`（含 launch_clock_point_count、data_path_point_count、capture_point_count、launch_clock_delay、data_path_delay）。
@@ -72,7 +72,7 @@ python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos --
 
 ```bash
 python -m lib gen-pt output/launch_path.csv -o output/report_timing.tcl
-python -m lib gen-pt -n 10 --no-wrap --extra "-delay_type max"
+python -m lib gen-pt -n 10 -w -e "-delay_type max"
 python -m lib gen-pt -j 4
 ```
 
@@ -81,9 +81,9 @@ python -m lib gen-pt -j 4
 | `launch_csv` | launch_path.csv 路径（可选，默认 `output/launch_path.csv`） |
 | `-o`, `--output` | 输出 TCL 路径 |
 | `-n`, `--max-paths` | 仅生成前 N 条 path（0=全部） |
-| `--no-wrap` | 每条 report_timing 单行输出 |
-| `--extra` | 额外 report_timing 参数 |
-| `--report-file` | TCL 中输出文件名变量 |
+| `-w`, `--no-wrap` | 每条 report_timing 单行输出（不换行） |
+| `-e`, `--extra` | 额外 report_timing 参数（原样拼到命令末尾） |
+| `-r`, `--report-file` | TCL 中输出文件名变量 |
 | `-j`, `--jobs` | 多进程 worker 数 |
 
 ---
@@ -91,19 +91,24 @@ python -m lib gen-pt -j 4
 ### 3. 对比 path_summary（compare）
 
 ```bash
-python -m lib compare golden/path_summary.csv test/path_summary.csv -o output/compare_result.csv
-python -m lib compare golden/path_summary.csv test/path_summary.csv -o out.csv --threshold 5 --no-charts --no-html
+python -m lib compare -g golden/path_summary.csv -t test/path_summary.csv -o output/compare_result.csv
+python -m lib compare -g golden/path_summary.csv -t test/path_summary.csv -o out.csv -T 5 -C -H
+
+# 兼容旧用法（位置参数）
+python -m lib compare golden/path_summary.csv test/path_summary.csv -o out.csv
 ```
 
 | 参数 | 说明 |
 |------|------|
-| `golden_file` / `test_file` | Golden / Test path_summary.csv 路径 |
+| `-g`, `--golden-file` | Golden path_summary.csv 路径（推荐显式传参） |
+| `-t`, `--test-file` | Test path_summary.csv 路径（推荐显式传参） |
+| `golden_file` / `test_file` | 兼容旧用法：位置参数（可选） |
 | `-o`, `--output` | 完整版对比 CSV 路径 |
-| `--threshold` | 阈值统计条件（默认 10%） |
-| `--bins` | 直方图桶数 |
-| `--charts-dir` | 图表目录 |
-| `--no-charts` / `--no-html` | 禁用图表 / HTML 报告 |
-| `--stats-json` / `--stats-csv` | 统计 JSON/CSV 路径 |
+| `-T`, `--threshold` | 阈值统计条件（默认 10%） |
+| `-b`, `--bins` | 直方图桶数 |
+| `-c`, `--charts-dir` | 图表目录 |
+| `-C`, `--no-charts` / `-H`, `--no-html` | 禁用图表 / HTML 报告 |
+| `-s`, `--stats-json` / `-S`, `--stats-csv` | 统计 JSON/CSV 路径 |
 
 **输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`；比值与统计保留 3 位小数，mean 为绝对值均值。  
 其中 `compare_stats.json` 与 `compare_report.html` 会显式记录输入参数 `golden_file`、`test_file`，便于追溯对比来源。
@@ -121,7 +126,7 @@ python -m lib compare golden/path_summary.csv test/path_summary.csv -o out.csv -
 # 不指定 -o 时会按格式自动写入：
 #   output/gen_format2_timing_report.rpt / output/gen_format1_timing_report.rpt / output/gen_pt_timing_report.rpt
 python -m lib gen-report config/gen_report/format2.yaml
-python -m lib gen-report config/gen_report/format2.yaml --seed 42
+python -m lib gen-report config/gen_report/format2.yaml -s 42
 
 # 也可以显式指定输出路径
 python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
@@ -131,7 +136,7 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 |------|------|
 | `config` | YAML 配置文件路径 |
 | `-o`, `--output` | 输出报告文件路径；不指定时默认 `output/gen_<format>_timing_report.rpt` |
-| `--seed` | 随机种子（可复现生成结果） |
+| `-s`, `--seed` | 随机种子（可复现生成结果） |
 
 **YAML 配置要点（base + override）**：
 
@@ -175,7 +180,7 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 - **数值精度**：  
   - `Fanout` 为整数；  
   - `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一保留 4 位小数（生成的 .rpt 与抽取后的 CSV 都遵守该规则）。  
-- **不确定性**：每条路径的 `clock uncertainty` 会被解析为 `path_summary.csv` 中的 `uncertainty` 列，在 `lib extract` 与 `parser_chaos` 中保持一致。
+- **不确定性/重收敛**：每条路径的 `clock reconvergence pessimism` 与 `clock uncertainty` 会被解析为 `path_summary.csv` 中的 `clock_reconvergence_pessimism` 与 `clock_uncertainty` 列，在 `lib extract` 与 `parser_chaos` 中保持一致（旧的 `uncertainty` 列已移除）。
 
 #### 4.2 Format1 报告的智能解析（行类型 + 数值顺序）
 
