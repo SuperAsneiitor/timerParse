@@ -113,6 +113,36 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("-H", "--no-html", action="store_true", help="禁用 HTML 报告生成")
     cp.add_argument("-s", "--stats-json", default="", help="统计 JSON 路径（默认：<output_dir>/compare_stats.json）")
     cp.add_argument("-S", "--stats-csv", default="", help="统计 CSV 路径（可选）")
+    cp.add_argument(
+        "--match-by",
+        choices=["path_id", "signature"],
+        default="path_id",
+        help="对齐方式：path_id（默认，验证流）；signature=起终点+path_type+双时钟",
+    )
+    cp.add_argument(
+        "--golden-launch-csv",
+        default="",
+        metavar="PATH",
+        help="可选：golden 侧 launch_path.csv，用于详情页逐点对比",
+    )
+    cp.add_argument(
+        "--test-launch-csv",
+        default="",
+        metavar="PATH",
+        help="可选：test 侧 launch_path.csv（与 golden-launch 同时指定生效）",
+    )
+    cp.add_argument(
+        "--golden-capture-csv",
+        default="",
+        metavar="PATH",
+        help="可选：golden 侧 capture_path.csv",
+    )
+    cp.add_argument(
+        "--test-capture-csv",
+        default="",
+        metavar="PATH",
+        help="可选：test 侧 capture_path.csv",
+    )
 
     # gen-report：根据 YAML 生成 timing 报告
     gr = subparsers.add_parser("gen-report", help="根据 YAML 配置生成 Timing 报告（title + path 表格）", parents=[parent])

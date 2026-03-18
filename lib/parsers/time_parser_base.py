@@ -154,16 +154,11 @@ class TimeParser(ABC):
         launch_clock: list[dict[str, Any]] = []
         data_path: list[dict[str, Any]] = []
         found = False
-        output_pin_suffixes = ("/Q", "/Z", "/ZN", "/ZP", "/QN", "/QB")
         for row in launch_rows:
             pt = (row.get("point") or "").strip()
             norm_pt = cls._normalizePin(pt)
-            is_target_row = (
-                norm_pt == target
-                or (target and norm_pt.startswith(target + "/"))
-            )
-            is_startpoint_output = is_target_row and any(norm_pt.endswith(suf) for suf in output_pin_suffixes)
-            if not found and (norm_pt == target or is_startpoint_output):
+            is_target_row = norm_pt == target or (target and norm_pt.startswith(target + "/"))
+            if not found and is_target_row:
                 found = True
                 row["path_type"] = "data_path"
                 data_path.append(row)

@@ -77,6 +77,7 @@ python scripts/run_validation_flow.py --jobs 4
   - `compare/pt_vs_format1.csv`
   - `compare/pt_vs_format2.csv`
 - [ ] Compare stats JSON files exist
+- [ ] （可选冒烟）`compare/detail_pt_vs_format1/compare_report.html` 与 `paths/path_*.html`（带 launch/capture 逐点对比）
 
 ## Reporting Format
 

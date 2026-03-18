@@ -212,6 +212,37 @@ def main(argv: list[str] | None = None) -> int:
         _repo,
     )
 
+    detail = cmpd / "detail_pt_vs_format1"
+    detail.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            sys.executable,
+            "-m",
+            "lib",
+            "compare",
+            "-g",
+            str(expt / "path_summary.csv"),
+            "-t",
+            str(ex1 / "path_summary.csv"),
+            "-o",
+            str(detail / "compare.csv"),
+            "--stats-json",
+            str(detail / "compare_stats.json"),
+            "--golden-launch-csv",
+            str(expt / "launch_path.csv"),
+            "--test-launch-csv",
+            str(ex1 / "launch_path.csv"),
+            "--golden-capture-csv",
+            str(expt / "capture_path.csv"),
+            "--test-capture-csv",
+            str(ex1 / "capture_path.csv"),
+            "--no-charts",
+            "--log-level",
+            args.log_level,
+        ],
+        _repo,
+    )
+
     log_util.brief(f"Validation flow done: {base}")
     return 0
 

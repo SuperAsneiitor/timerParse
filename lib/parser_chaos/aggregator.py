@@ -13,10 +13,6 @@ from .constants import RESULT_SENTINEL
 from .models import ParseOutput
 from .utils import cleanMetricFloat, normalizePin, sumDelayInRows
 
-# startpoint 判定为 output pin 时的常见后缀
-_OUTPUT_PIN_SUFFIXES = ("/Q", "/Z", "/ZN", "/ZP", "/QN", "/QB")
-
-
 def splitLaunchByCommonPin(
     launch_rows: list[dict[str, Any]],
     startpoint: str,
@@ -25,8 +21,8 @@ def splitLaunchByCommonPin(
     """
     按 startpoint 将 launch 段拆为 launch_clock 与 data_path。
 
-    逻辑：遍历 launch_rows，若当前行的 point 归一化后等于 startpoint 或是 startpoint 的
-    输出 pin（如 startpoint/Q），则该行及之后归入 data_path，之前归入 launch_clock；
+    逻辑：遍历 launch_rows，若当前行的 point 归一化后等于 startpoint，或是 startpoint
+    下挂的任一具体 pin（如 startpoint/Q），则该行及之后归入 data_path，之前归入 launch_clock；
     并为每行设置 path_type。返回 (launch_clock_rows, data_path_rows, lc_count, dp_count, lc_delay, dp_delay)。
     """
     target = normalizePin(startpoint)
@@ -37,10 +33,7 @@ def splitLaunchByCommonPin(
         pt = (row.get("point") or "").strip()
         norm_pt = normalizePin(pt)
         is_target_row = norm_pt == target or (target and norm_pt.startswith(target + "/"))
-        is_startpoint_output = is_target_row and any(
-            norm_pt.endswith(suf) for suf in _OUTPUT_PIN_SUFFIXES
-        )
-        if not found and (norm_pt == target or is_startpoint_output):
+        if not found and is_target_row:
             found = True
             row["path_type"] = "data_path"
             data_path.append(row)

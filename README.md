@@ -20,7 +20,7 @@ python -m lib <子命令> [参数...]
 |------|--------|------|------|----------|
 | **解析 Timing 报告** | `extract` | 单个 timing 报告文件（`.rpt` 等） | `launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv` | 按格式(format1/format2/pt) 切 path → 每 path 解析 launch/capture → 按 startpoint 将 launch 拆成 launch_clock / data_path（`launch_path.csv` 含 `path_type`）→ 汇总写 CSV；支持 `-j` 多进程 |
 | **生成 PT report_timing** | `gen-pt` | `launch_path.csv`（及可选参数） | `report_timing.tcl`（含 set output_file、rm/touch、若干 report_timing 行并重定向） | 按 path_id 分组 → 每 path 用 trigger_edge 生成 -rise_through/-fall_through → 拼接 TCL；支持 `-j` |
-| **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html` | 按 path_id 对齐 → 算 (test−golden)/golden×100% → 统计（绝对值均值、3 位小数）、阈值、相关性 → 可选画图与 HTML |
+| **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html`、`paths/path_*.html` 详情 | 默认按 **path_id** 对齐；可选 `--match-by signature`（起终点+path_type+双时钟）。可附 `--golden-launch-csv`/`--test-launch-csv` 与 capture 逐点对比详情页 |
 | **生成 Timing 报告** | `gen-report` | YAML 配置文件 | 指定格式的 timing 报告文件（.rpt） | 按 YAML 生成每条 path 的 Title（Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等）与 path 表格；支持固定值、枚举、随机数、模板等取值方式，列顺序可配置 |
 
 `path_summary.csv` 列：`path_id,startpoint,endpoint,arrival_time,required_time,clock_reconvergence_pessimism,clock_uncertainty,slack,launch_clock_point_count,data_path_point_count,capture_point_count,launch_clock_delay,data_path_delay`。
@@ -106,6 +106,8 @@ python -m lib gen-pt -g "output/launch_path_part*.csv" -o output/report_timing.t
 
 ### 3. 对比 path_summary（compare）
 
+实现位于 **`lib/compare/`**（`path_summary_compare`、`stats`、`charts`、`html_report`、`path_detail_html`、`csv_path_points`）；`lib/compare_path_summary.py` 为 CLI/单测兼容入口。
+
 ```bash
 python -m lib compare -g golden/path_summary.csv -t test/path_summary.csv -o output/compare_result.csv
 python -m lib compare -g golden/path_summary.csv -t test/path_summary.csv -o out.csv -T 5 -C -H
@@ -125,9 +127,12 @@ python -m lib compare golden/path_summary.csv test/path_summary.csv -o out.csv
 | `-c`, `--charts-dir` | 图表目录 |
 | `-C`, `--no-charts` / `-H`, `--no-html` | 禁用图表 / HTML 报告 |
 | `-s`, `--stats-json` / `-S`, `--stats-csv` | 统计 JSON/CSV 路径 |
+| `--match-by` | `path_id`（默认）或 `signature`（起终点+path_type+双时钟） |
+| `--golden-launch-csv` / `--test-launch-csv` | 可选；同时指定时详情页含 **Launch 逐点对比** |
+| `--golden-capture-csv` / `--test-capture-csv` | 可选；同时指定时详情页含 **Capture 逐点对比** |
 
-**输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`；比值与统计保留 3 位小数，mean 为绝对值均值。  
-其中 `compare_stats.json` 与 `compare_report.html` 会显式记录输入参数 `golden_file`、`test_file`，便于追溯对比来源。
+**输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`、`paths/path_*.html`（可点开逐点表）；比值与统计保留 3 位小数；含段级 delay/CRP/uncertainty 差值统计。  
+`compare_stats.json` 与 `compare_report.html` 记录 `golden_file`、`test_file`。验证流在 `compare/detail_pt_vs_format1/` 下额外生成带 launch/capture 详情的 HTML 冒烟结果。
 
 ---
 
@@ -253,7 +258,7 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
   - `lib/report_gen/format1.py` / `format2.py` / `pt.py`
 - `lib/extract.py`：extract 子命令逻辑（解析 + 写 CSV）
 - `lib/gen_pt_report_timing.py`：gen-pt 子命令逻辑（launch_path → report_timing TCL）
-- `lib/compare_path_summary.py`：compare 子命令逻辑（两个 path_summary 对比与统计）
+- `lib/compare/`：compare 子命令实现；`lib/compare_path_summary.py` 为薄入口
 - `lib/cli.py`：统一入口与子命令分发；`lib/__main__.py` 调用 `run_cli()`
 
 兼容性：仍保留 `lib/format1_parser.py` 等旧模块路径作为薄包装转发到 `lib/parsers/`。
