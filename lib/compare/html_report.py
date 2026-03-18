@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html as html_module
+import math
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -27,6 +28,50 @@ def _detailFileName(row: Dict[str, str]) -> str:
     return f"path_g{g}_t{t}.html"
 
 
+def _to_float(s: object) -> float | None:
+    v = ("" if s is None else str(s)).strip()
+    if not v:
+        return None
+    if v.endswith("%"):
+        v = v[:-1].strip()
+    try:
+        x = float(v)
+        if not math.isfinite(x):
+            return None
+        return x
+    except Exception:
+        return None
+
+
+def _sort_key_for_row(row: Dict[str, str], sort_by: str, sort_abs: bool) -> float:
+    """
+    sort_by: 支持 ratio/diff 字段名，如 slack_ratio、data_path_delay_diff、clock_uncertainty_diff 等。
+    返回值越大表示差异越大（用于默认降序排序）。
+    """
+    v = _to_float(row.get(sort_by, ""))
+    if v is None:
+        return float("-inf")
+    return abs(v) if sort_abs else v
+
+
+def _render_nav_links(current: int, total: int) -> str:
+    if total <= 1:
+        return ""
+    links: List[str] = []
+    prev_page = current - 1
+    next_page = current + 1
+    if prev_page >= 1:
+        links.append(f"<a href='page_{prev_page:04d}.html'>上一页</a>")
+    else:
+        links.append("<span style='color:#888'>上一页</span>")
+    links.append(f"<span style='margin:0 10px'>第 {current}/{total} 页</span>")
+    if next_page <= total:
+        links.append(f"<a href='page_{next_page:04d}.html'>下一页</a>")
+    else:
+        links.append("<span style='color:#888'>下一页</span>")
+    return "<div style='margin:10px 0'>" + " ".join(links) + "</div>"
+
+
 def generate_html_report(
     html_path: Path,
     golden_path: Path,
@@ -40,6 +85,10 @@ def generate_html_report(
     test_launch_by_path_id: Optional[Dict[str, List[dict]]] = None,
     golden_capture_by_path_id: Optional[Dict[str, List[dict]]] = None,
     test_capture_by_path_id: Optional[Dict[str, List[dict]]] = None,
+    page_size: int = 100,
+    sort_by: str = "slack_ratio",
+    sort_abs: bool = True,
+    detail_scope: str = "first_page",
 ) -> None:
     """
     生成路径级对比 HTML 报告。
@@ -90,62 +139,141 @@ def generate_html_report(
             f"<td>{_fmt_plain(data.get('p95'))}</td><td>{_fmt_plain(data.get('p99'))}</td></tr>"
         )
 
-    # 路径列表（简单表格：path_id/startpoint/endpoint/slack_ratio/launch/data delay diff）
-    # 同时为每条路径生成独立的详细对比页面，并在此处加上可点击链接。
-    detail_dir = html_path.parent / "paths"
-    rows_paths = []
-    for row in rows:
-        pid = (row.get("path_id") or "").strip()
-        pid_t = (row.get("path_id_test") or pid).strip()
-        if pid:
-            fname = _detailFileName(row)
-            detail_html = detail_dir / fname
-            gl = (
-                golden_launch_by_path_id.get(pid, [])
-                if golden_launch_by_path_id
-                else None
-            )
-            tl = (
-                test_launch_by_path_id.get(pid_t, [])
-                if test_launch_by_path_id
-                else None
-            )
-            gc = (
-                golden_capture_by_path_id.get(pid, [])
-                if golden_capture_by_path_id
-                else None
-            )
-            tc = (
-                test_capture_by_path_id.get(pid_t, [])
-                if test_capture_by_path_id
-                else None
-            )
-            generatePathDetailPage(
-                row=row,
-                html_path=detail_html,
-                golden_path=golden_path,
-                test_path=test_path,
-                golden_launch_rows=gl,
-                test_launch_rows=tl,
-                golden_capture_rows=gc,
-                test_capture_rows=tc,
-            )
-            pid_cell = f"<a href='paths/{fname}' target='_blank'>{html_module.escape(pid)}</a>"
-        else:
-            pid_cell = ""
+    # 方案 B：关键差异列 + 排序 + 分页
+    sort_by = (sort_by or "slack_ratio").strip()
+    if not sort_by:
+        sort_by = "slack_ratio"
+    sorted_rows = sorted(
+        rows,
+        key=lambda r: _sort_key_for_row(r, sort_by=sort_by, sort_abs=sort_abs),
+        reverse=True,
+    )
 
-        rows_paths.append(
-            "<tr>"
-            f"<td>{pid_cell}</td>"
-            f"<td>{_fmt_plain(row.get('startpoint'))}</td>"
-            f"<td>{_fmt_plain(row.get('endpoint'))}</td>"
-            f"<td>{_fmt_plain(row.get('slack_ratio'))}</td>"
-            f"<td>{_fmt_plain(row.get('launch_clock_delay_diff'))}</td>"
-            f"<td>{_fmt_plain(row.get('data_path_delay_diff'))}</td>"
-            f"<td>{_fmt_plain(row.get('clock_reconvergence_pessimism_diff'))}</td>"
-            f"<td>{_fmt_plain(row.get('clock_uncertainty_diff'))}</td>"
-            "</tr>"
+    if page_size <= 0:
+        page_size = 100
+    total_pages = (len(sorted_rows) + page_size - 1) // page_size
+    pages_dir = html_path.parent / "pages"
+    detail_dir = html_path.parent / "paths"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+
+    def _should_generate_detail(page_idx: int) -> bool:
+        if detail_scope == "none":
+            return False
+        if detail_scope == "all":
+            return True
+        # first_page
+        return page_idx == 1
+
+    def _render_rows_table(page_rows: List[Dict[str, str]], page_idx: int) -> str:
+        """渲染单页的路径表，并按策略生成详情页。"""
+        rows_paths: List[str] = []
+        gen_detail = _should_generate_detail(page_idx) and (
+            (golden_launch_by_path_id and test_launch_by_path_id)
+            or (golden_capture_by_path_id and test_capture_by_path_id)
         )
+        for row in page_rows:
+            pid = (row.get("path_id") or "").strip()
+            pid_t = (row.get("path_id_test") or pid).strip()
+            pid_cell = html_module.escape(pid)
+            if pid:
+                fname = _detailFileName(row)
+                if gen_detail:
+                    detail_html = detail_dir / fname
+                    gl = (
+                        golden_launch_by_path_id.get(pid, [])
+                        if golden_launch_by_path_id
+                        else None
+                    )
+                    tl = (
+                        test_launch_by_path_id.get(pid_t, [])
+                        if test_launch_by_path_id
+                        else None
+                    )
+                    gc = (
+                        golden_capture_by_path_id.get(pid, [])
+                        if golden_capture_by_path_id
+                        else None
+                    )
+                    tc = (
+                        test_capture_by_path_id.get(pid_t, [])
+                        if test_capture_by_path_id
+                        else None
+                    )
+                    generatePathDetailPage(
+                        row=row,
+                        html_path=detail_html,
+                        golden_path=golden_path,
+                        test_path=test_path,
+                        golden_launch_rows=gl,
+                        test_launch_rows=tl,
+                        golden_capture_rows=gc,
+                        test_capture_rows=tc,
+                    )
+                # 即使不生成详情页，也保留链接（用户可后续用同参数重跑生成）
+                pid_cell = f"<a href='../paths/{fname}' target='_blank'>{html_module.escape(pid)}</a>" if page_idx != 0 else f"<a href='paths/{fname}' target='_blank'>{html_module.escape(pid)}</a>"
+
+            rows_paths.append(
+                "<tr>"
+                f"<td>{pid_cell}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('startpoint')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('endpoint')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('slack_ratio')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('data_path_delay_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('launch_clock_delay_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('clock_uncertainty_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('clock_reconvergence_pessimism_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('data_path_point_count_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('launch_clock_point_count_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_plain(row.get('capture_point_count_diff')))}</td>"
+                "</tr>"
+            )
+        return (
+            "<table>"
+            "<tr>"
+            "<th>path_id</th><th>startpoint</th><th>endpoint</th>"
+            "<th>slack_ratio</th>"
+            "<th>data_path_delay_diff</th><th>launch_clock_delay_diff</th>"
+            "<th>clock_uncertainty_diff</th><th>CRP_diff</th>"
+            "<th>data_path_point_count_diff</th><th>launch_clock_point_count_diff</th><th>capture_point_count_diff</th>"
+            "</tr>"
+            + "".join(rows_paths)
+            + "</table>"
+        )
+
+    # 写分页页（包含路径表 + 导航）
+    for page_idx in range(1, max(total_pages, 1) + 1):
+        start = (page_idx - 1) * page_size
+        end = min(page_idx * page_size, len(sorted_rows))
+        page_rows = sorted_rows[start:end]
+        nav = _render_nav_links(page_idx, total_pages)
+        table_html = _render_rows_table(page_rows, page_idx=page_idx)
+        page_html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>compare_path_summary 路径列表 - page {page_idx}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+    table {{ border-collapse: collapse; width: 100%; margin-bottom: 18px; }}
+    th, td {{ border: 1px solid #ccc; padding: 6px 8px; font-size: 13px; }}
+    th {{ background: #f3f3f3; text-align: left; }}
+  </style>
+</head>
+<body>
+  <h1>路径列表（关键差异，按 {html_module.escape(sort_by)} {'绝对值' if sort_abs else ''}排序）</h1>
+  <p><a href="../compare_report.html">返回汇总首页</a></p>
+  {nav}
+  {table_html}
+  {nav}
+</body>
+</html>
+"""
+        with open(pages_dir / f"page_{page_idx:04d}.html", "w", encoding="utf-8") as f:
+            f.write(page_html)
+
+    # 首页只显示第一页的表格（更快）
+    first_page_table = _render_rows_table(sorted_rows[:page_size], page_idx=0)
+    first_nav = _render_nav_links(1, total_pages).replace("page_", "pages/page_")
 
     chart_tags = []
     for key, name in chart_files.items():
@@ -197,10 +325,10 @@ def generate_html_report(
   </table>
 
   <h2>路径列表（每条路径的核心差异）</h2>
-  <table>
-    <tr><th>path_id</th><th>startpoint</th><th>endpoint</th><th>slack_ratio</th><th>launch_clock_delay_diff</th><th>data_path_delay_diff</th><th>CRP_diff</th><th>uncertainty_diff</th></tr>
-    {''.join(rows_paths)}
-  </table>
+  <p><b>分页：</b>每页 {page_size} 条；排序字段：{html_module.escape(sort_by)}（{'abs' if sort_abs else 'raw'}）。</p>
+  <p>更多路径见：<a href="pages/page_0001.html">pages/page_0001.html</a></p>
+  {first_nav}
+  {first_page_table}
 
   <h2>图表</h2>
   {''.join(chart_tags) if chart_tags else '<p>未生成图表。</p>'}

@@ -143,6 +143,32 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="可选：test 侧 capture_path.csv",
     )
+    cp.add_argument(
+        "--page-size",
+        type=int,
+        default=100,
+        metavar="N",
+        help="HTML 路径列表分页大小（默认：100）",
+    )
+    cp.add_argument(
+        "--sort-by",
+        default="slack_ratio",
+        metavar="COL",
+        help="HTML 路径列表排序字段（默认：slack_ratio；也可用 data_path_delay_diff 等）",
+    )
+    cp.add_argument(
+        "--no-sort-abs",
+        dest="sort_abs",
+        action="store_false",
+        default=True,
+        help="关闭绝对值排序（默认按绝对值降序）",
+    )
+    cp.add_argument(
+        "--detail-scope",
+        choices=["none", "first_page", "all"],
+        default="first_page",
+        help="详情页生成范围：none=不生成；first_page=仅第一页；all=全部（路径多时很慢）",
+    )
 
     # gen-report：根据 YAML 生成 timing 报告
     gr = subparsers.add_parser("gen-report", help="根据 YAML 配置生成 Timing 报告（title + path 表格）", parents=[parent])

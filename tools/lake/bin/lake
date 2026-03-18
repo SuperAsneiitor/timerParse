@@ -1,0 +1,49 @@
+#!/bin/csh -f
+# lake: 产品命令入口（csh -f），从当前目录向上定位 repo root 并转发到 python -m lib
+
+if ( $?LAKE_PYTHON ) then
+  set py = "$LAKE_PYTHON"
+else
+  set py = "python"
+endif
+
+if ( $#argv < 1 ) then
+  echo "Usage: lake <command> [args...]"
+  echo "Commands: extract | gen-pt | compare | gen-report"
+  exit 2
+endif
+
+set cmd = "$argv[1]"
+shift argv
+
+# 从当前目录向上找 repo root
+set dir = "$cwd"
+set root = ""
+
+while ( 1 )
+  if ( -d "$dir/.git" ) then
+    set root = "$dir"
+    break
+  endif
+
+  if ( -f "$dir/lib/cli.py" ) then
+    set root = "$dir"
+    break
+  endif
+
+  set parent = `cd "$dir/.."; pwd`
+  if ( "$parent" == "$dir" ) then
+    break
+  endif
+  set dir = "$parent"
+end
+
+if ( "$root" == "" ) then
+  echo "ERROR: cannot locate repo root from: $cwd"
+  echo "Hint: run inside the timerExtract repo (or a subdir)."
+  exit 2
+endif
+
+cd "$root"
+exec $py -m lib "$cmd" $argv
+

@@ -130,9 +130,29 @@ python -m lib compare golden/path_summary.csv test/path_summary.csv -o out.csv
 | `--match-by` | `path_id`（默认）或 `signature`（起终点+path_type+双时钟） |
 | `--golden-launch-csv` / `--test-launch-csv` | 可选；同时指定时详情页含 **Launch 逐点对比** |
 | `--golden-capture-csv` / `--test-capture-csv` | 可选；同时指定时详情页含 **Capture 逐点对比** |
+| `--page-size` | HTML 路径列表分页大小（默认 100） |
+| `--sort-by` | HTML 路径列表排序字段（默认 `slack_ratio`，也可用 `data_path_delay_diff` 等） |
+| `--no-sort-abs` | 关闭按绝对值排序（默认按绝对值降序） |
+| `--detail-scope` | 详情页生成范围：`none`/`first_page`（默认）/`all`（很慢） |
 
-**输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`、`paths/path_*.html`（可点开逐点表）；比值与统计保留 3 位小数；含段级 delay/CRP/uncertainty 差值统计。  
+**输出**：完整/简化对比 CSV、`compare_stats.json`（可选 `compare_stats.csv`）、`charts/`、`compare_report.html`、`pages/page_*.html`（路径列表分页）、`paths/path_*.html`（详情页，可点开逐点表）；比值与统计保留 3 位小数；含段级 delay/CRP/uncertainty 差值统计。  
 `compare_stats.json` 与 `compare_report.html` 记录 `golden_file`、`test_file`。验证流在 `compare/detail_pt_vs_format1/` 下额外生成带 launch/capture 详情的 HTML 冒烟结果。
+
+---
+
+### 6. 产品化命令入口（lake）
+
+提供 csh 环境下的产品命令入口：`lake <command> ...`，用于替代 `python -m lib <command> ...`。
+
+- `tools/lake/bin/lake`：可执行入口（`#!/bin/csh -f`），从当前目录向上定位 repo root 并转发执行 `python -m lib`。
+- `tools/lake/lake.csh`：source 脚本（内置 `LAKE_PYTHON`），将 `tools/lake/bin` 加入 PATH，并注入 `lake` 命令。
+
+示例：
+
+```csh
+source /path/to/timerExtract/tools/lake/lake.csh
+lake compare -g golden/path_summary.csv -t test/path_summary.csv -o out/compare.csv
+```
 
 ---
 

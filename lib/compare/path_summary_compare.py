@@ -346,6 +346,10 @@ def run_compare_path_summary(args) -> int:
 
     html_path = out_path.parent / "compare_report.html"
     if not getattr(args, "no_html", False):
+        page_size = int(getattr(args, "page_size", 100) or 100)
+        sort_by = (getattr(args, "sort_by", "slack_ratio") or "slack_ratio").strip()
+        sort_abs = bool(getattr(args, "sort_abs", True))
+        detail_scope = (getattr(args, "detail_scope", "first_page") or "first_page").strip()
         generate_html_report(
             html_path=html_path,
             golden_path=golden_path,
@@ -359,6 +363,10 @@ def run_compare_path_summary(args) -> int:
             test_launch_by_path_id=test_launch_map,
             golden_capture_by_path_id=golden_capture_map,
             test_capture_by_path_id=test_capture_map,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_abs=sort_abs,
+            detail_scope=detail_scope,
         )
 
     log_util.brief(f"golden_file -> {golden_path}")
