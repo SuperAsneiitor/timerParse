@@ -19,6 +19,7 @@ python -m lib <子命令> [参数...]
 | 功能 | 子命令 | 输入 | 输出 | 处理过程 |
 |------|--------|------|------|----------|
 | **解析 Timing 报告** | `extract` | 单个 timing 报告文件（`.rpt` 等） | `launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv` | 按格式(format1/format2/pt) 切 path → 每 path 解析 launch/capture → 按 startpoint 将 launch 拆成 launch_clock / data_path（`launch_path.csv` 含 `path_type`）→ 汇总写 CSV；支持 `-j` 多进程 |
+| **解析 Timing 报告（chaos）** | `extract-chaos` | 单个 timing 报告文件（`.rpt` 等） | 同上（支持分片 *_partK.csv） | `parser_chaos`：1 个分割器进程 + N 个 worker 进程，队列式切块/解析/聚合写 CSV；默认 `-j 3` |
 | **生成 PT report_timing** | `gen-pt` | `launch_path.csv`（及可选参数） | `report_timing.tcl`（含 set output_file、rm/touch、若干 report_timing 行并重定向） | 按 path_id 分组 → 每 path 用 trigger_edge 生成 -rise_through/-fall_through → 拼接 TCL；支持 `-j` |
 | **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html`、`paths/path_*.html` 详情 | 默认按 **path_id** 对齐；可选 `--match-by signature`（起终点+path_type+双时钟）。可附 `--golden-launch-csv`/`--test-launch-csv` 与 capture 逐点对比详情页 |
 | **生成 Timing 报告** | `gen-report` | YAML 配置文件 | 指定格式的 timing 报告文件（.rpt） | 按 YAML 生成每条 path 的 Title（Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等）与 path 表格；支持固定值、枚举、随机数、模板等取值方式，列顺序可配置 |

@@ -7,6 +7,7 @@ from . import extract
 from . import compare_path_summary as compare_module
 from . import gen_pt_report_timing as gen_pt_module
 from . import log_util
+from .parser_chaos import runExtractChaos as runExtractChaosChaos
 from .report_gen import run_gen_report as run_gen_report
 
 
@@ -14,7 +15,7 @@ def _ensure_subcommand(argv: list[str] | None) -> list[str]:
     """若第一个参数不是子命令名，则插入 extract，兼容旧用法 python -m lib report.rpt -o out。"""
     if not argv:
         return argv or []
-    known = ("extract", "gen-pt", "compare", "gen-report")
+    known = ("extract", "extract-chaos", "gen-pt", "compare", "gen-report")
     if argv[0] in known:
         return argv
     return ["extract"] + argv
@@ -58,6 +59,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="按 path 数拆分输出文件：每 N 条 path 生成一组 *_partK.csv（0=不拆分，默认）",
     )
     ext.add_argument(
+        "-m",
+        "--merge-launch",
+        action="store_true",
+        help="当启用分片输出时，额外合并生成 launch_path.csv（默认不生成）",
+    )
+
+    # extract-chaos
+    exC = subparsers.add_parser("extract-chaos", help="parser_chaos：分割器+多 worker 队列解析", parents=[parent])
+    exC.add_argument("input_rpt", help="输入 timing 报告文件路径")
+    exC.add_argument("-o", "--output-dir", default="output_parser_chaos", help="输出目录（默认：output_parser_chaos）")
+    exC.add_argument(
+        "-f",
+        "--format",
+        choices=["auto", "format1", "format2", "pt", "apr"],
+        default="auto",
+        help="报告格式（默认：auto 自动识别）",
+    )
+    exC.add_argument("-j", "--jobs", type=int, default=3, metavar="N", help="解析器 Worker 进程数，默认 3")
+    exC.add_argument(
+        "-p",
+        "--paths-per-shard",
+        type=int,
+        default=0,
+        metavar="N",
+        help="按 path 数拆分输出文件：每 N 条 path 生成一组 *_partK.csv（0=不拆分，默认）",
+    )
+    exC.add_argument(
         "-m",
         "--merge-launch",
         action="store_true",
@@ -200,6 +228,16 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     if args.command == "extract":
         return extract.runExtract(args)
+    if args.command == "extract-chaos":
+        return runExtractChaosChaos(
+            report_path=args.input_rpt,
+            output_dir=args.output_dir,
+            format_key=args.format,
+            num_workers=args.jobs,
+            paths_per_shard=getattr(args, "paths_per_shard", 0),
+            merge_launch=getattr(args, "merge_launch", False),
+            log_level=getattr(args, "log_level", "brief"),
+        )
     if args.command == "gen-pt":
         return gen_pt_module.run_gen_pt(args)
     if args.command == "compare":
