@@ -1,5 +1,39 @@
 # Release Notes
 
+## [1.0.0] - 2026-03-19
+
+### 更新时间
+- **日期**：2026-03-19
+
+### 更新原因与概要
+- 发布 1.0.0 版本：compare 与 parser_chaos 流程进一步产品化，支持 HTML 静态分页 drill-down，以及统一 CLI 接入口与 csh `lake` 命令入口。
+
+### 变更
+- compare（path_summary 对比）增强：
+  - 首页路径列表改为方案 B：关键差异列 + 默认按排序字段（默认 `slack_ratio` 的绝对值）降序。
+  - 新增静态分页：`compare_report.html` + `pages/page_*.html`（默认每页 100 条）。
+  - 逐点详情 drill-down：可选生成 `paths/path_*.html`（默认仅首批生成以避免 path 太多导致极慢）。
+  - 新增 compare 参数：
+    - `--page-size`
+    - `--sort-by`
+    - `--no-sort-abs`
+    - `--detail-scope`
+
+- parser_chaos CLI 集成：
+  - `lib/cli.py` 新增子命令 `extract-chaos`，内部调用 `lib.parser_chaos.runExtractChaos`。
+  - 默认输出目录：`output_parser_chaos`（与原脚本一致）。
+
+- 产品命令入口：
+  - 新增 `tools/lake/`：
+    - `tools/lake/bin/lake`：`#!/bin/csh -f` 可执行入口，转发到 `python -m lib`。
+    - `tools/lake/lake.csh`：source 脚本，注入 `LAKE_PYTHON` 与 `lake` 命令。
+
+### 文档与测试
+- `README.md` 更新 compare / extract-chaos / lake 的用法与参数说明。
+- compare 单测与全链路验证流程均已通过（含 validation flow）。  
+
+---
+
 ## [0.4.2] - 2026-03-10
 
 ### 更新时间

@@ -75,6 +75,21 @@ python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos -f
 python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos -f auto -j 4 -p 10000
 ```
 
+推荐使用统一入口（已接入 `lib/cli.py`）：
+```bash
+# 自动识别格式
+python -m lib extract-chaos path/to/report.rpt -o output_parser_chaos -f auto -j 4
+
+# 大文件：按 path 数拆分输出
+python -m lib extract-chaos path/to/report.rpt -o output_parser_chaos -f auto -j 4 -p 10000
+```
+
+也可以在 csh 中直接使用 `lake`（source 后）：
+```csh
+source /path/to/timerExtract/tools/lake/lake.csh
+lake extract-chaos path/to/report.rpt -o output_parser_chaos -f auto -j 4
+```
+
 详见 [docs/parser_chaos.md](docs/parser_chaos.md)。跨机迁移或恢复会话上下文可参考 [docs/SESSION_MIGRATION.md](docs/SESSION_MIGRATION.md)。
 
 ---
