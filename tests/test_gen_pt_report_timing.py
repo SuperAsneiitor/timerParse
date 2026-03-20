@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import os
+import csv
+import argparse
+import tempfile
 import sys
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.gen_pt_report_timing import build_through_args, _classify_point, format_report_timing
+from lib.gen_pt_report_timing import build_through_args, _classify_point, format_report_timing, run_gen_pt
 
 
 class TestGenPtReportTiming(unittest.TestCase):
@@ -68,6 +72,101 @@ class TestGenPtReportTiming(unittest.TestCase):
         )
         self.assertIn("report_timing -from {u0/A} -to {u1/Z}", cmd)
         self.assertIn(">> ${output_file}", cmd)
+
+    def test_run_gen_pt_uses_output_file(self):
+        """当传入 args.output_file 时，TCL 里 set output_file 应指向该路径。"""
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            launch_csv = td_path / "launch_path.csv"
+            tcl_path = td_path / "report_timing.tcl"
+            rpt_target = td_path / "my_report.rpt"
+
+            fieldnames = [
+                "path_id",
+                "startpoint",
+                "endpoint",
+                "startpoint_clock",
+                "endpoint_clock",
+                "slack",
+                "slack_status",
+                "point_index",
+                "point",
+                "trigger_edge",
+            ]
+            rows = [
+                {
+                    "path_id": "1",
+                    "startpoint": "u_start/A",
+                    "endpoint": "u_out/Q",
+                    "startpoint_clock": "CLK_A",
+                    "endpoint_clock": "CLK_B",
+                    "slack": "0",
+                    "slack_status": "MET",
+                    "point_index": "1",
+                    "point": "clock CLK_A (rise edge)",
+                    "trigger_edge": "",
+                },
+                {
+                    "path_id": "1",
+                    "startpoint": "u_start/A",
+                    "endpoint": "u_out/Q",
+                    "startpoint_clock": "CLK_A",
+                    "endpoint_clock": "CLK_B",
+                    "slack": "0",
+                    "slack_status": "MET",
+                    "point_index": "2",
+                    "point": "u_start/A (BUF)",
+                    "trigger_edge": "r",
+                },
+                {
+                    "path_id": "1",
+                    "startpoint": "u_start/A",
+                    "endpoint": "u_out/Q",
+                    "startpoint_clock": "CLK_A",
+                    "endpoint_clock": "CLK_B",
+                    "slack": "0",
+                    "slack_status": "MET",
+                    "point_index": "3",
+                    "point": "u_mid/Z (BUF)",
+                    "trigger_edge": "f",
+                },
+                {
+                    "path_id": "1",
+                    "startpoint": "u_start/A",
+                    "endpoint": "u_out/Q",
+                    "startpoint_clock": "CLK_A",
+                    "endpoint_clock": "CLK_B",
+                    "slack": "0",
+                    "slack_status": "MET",
+                    "point_index": "4",
+                    "point": "u_out/Q (DFF)",
+                    "trigger_edge": "",
+                },
+            ]
+            with open(launch_csv, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            args = argparse.Namespace(
+                launch_glob="",
+                launch_csv=str(launch_csv),
+                output=str(tcl_path),
+                max_paths=0,
+                no_wrap=False,
+                extra="",
+                report_file="report_file.rpt",
+                output_file=str(rpt_target),
+                rise_cmd="-rise_through",
+                fall_cmd="-fall_through",
+                jobs=1,
+            )
+
+            rc = run_gen_pt(args)
+            self.assertEqual(rc, 0)
+
+            tcl_text = tcl_path.read_text(encoding="utf-8")
+            self.assertIn(f'set output_file "{rpt_target}"', tcl_text)
 
 
 if __name__ == "__main__":
