@@ -230,6 +230,9 @@ def run_gen_pt(args) -> int:
     extra_args = getattr(args, "extra", "")
     rise_cmd = getattr(args, "rise_cmd", "-rise_through")
     fall_cmd = getattr(args, "fall_cmd", "-fall_through")
+    report_file_target = (getattr(args, "output_file", "") or "").strip()
+    if not report_file_target:
+        report_file_target = str(getattr(args, "report_file", "report_file.rpt") or "report_file.rpt")
 
     written = 0
     metric_columns: list[str] = []
@@ -237,7 +240,7 @@ def run_gen_pt(args) -> int:
         f.write("# PrimeTime report_timing script generated from launch_path.csv\n")
         f.write("# -from / -to: [get_clocks clock]\n")
         f.write("# -rise_through / -fall_through are driven by trigger_edge (r/f) when available\n")
-        f.write(f"set output_file \"{args.report_file}\"\n")
+        f.write(f"set output_file \"{report_file_target}\"\n")
         f.write("sh rm -rf ${output_file}\n")
         f.write("sh touch ${output_file}\n\n")
 
