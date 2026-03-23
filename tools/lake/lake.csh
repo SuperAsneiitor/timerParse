@@ -38,6 +38,6 @@ if ( $found == 0 ) then
   rehash
 endif
 
-# 注入命令（走 PATH 中的 lake）
-alias lake 'lake \!*'
+# lake 命令会直接走 PATH 里的可执行文件 `tools/lake/bin/lake`。
+# 不建议再用 alias 覆盖，因为 alias 展开可能导致带空格/引号的参数（如 gen-pt 的 --extra "... "）被二次拆分。
 
