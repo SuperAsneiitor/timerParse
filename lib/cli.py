@@ -187,9 +187,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cp.add_argument(
         "--sort-by",
-        default="slack_ratio",
+        default="slack_diff",
         metavar="COL",
-        help="HTML 路径列表排序字段（默认：slack_ratio；也可用 data_path_delay_diff 等）",
+        help="HTML 路径列表排序字段（默认：slack_diff；也可用 data_path_delay_diff 等）",
     )
     cp.add_argument(
         "--no-sort-abs",
@@ -200,9 +200,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cp.add_argument(
         "--detail-scope",
-        choices=["none", "first_page", "all"],
+        choices=["none", "first_page", "all", "topN"],
         default="first_page",
-        help="详情页生成范围：none=不生成；first_page=仅第一页；all=全部（路径多时很慢）",
+        help="详情页生成范围：none=不生成；first_page=仅第一页；topN=仅生成前 N 条（控制 runtime）；all=全部（路径多时很慢）",
+    )
+    cp.add_argument(
+        "--detail-top-n",
+        type=int,
+        default=50,
+        metavar="N",
+        help="当 --detail-scope=topN 时：生成前 N 条详情页（默认：50）",
     )
 
     # gen-report：根据 YAML 生成 timing 报告

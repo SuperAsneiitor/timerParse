@@ -11,7 +11,11 @@ from .csv_path_points import loadSegmentCsvByPathId
 from .html_report import generate_html_report
 
 
-RATIO_COLUMNS = ["arrival_time_ratio", "required_time_ratio", "slack_ratio"]
+RATIO_COLUMNS = ["arrival_time_ratio", "required_time_ratio", "slack_diff"]
+
+# slack PASS/FAIL 标准（来自 plan：5ps + 5% 双条件）
+SLACK_ABS_PASS_PS = 5.0
+SLACK_REL_PASS = 0.05
 
 # 路径级完整对比 CSV 的列（保持旧列在前，新增列追加在后）
 FIELDNAMES_FULL = [
@@ -32,6 +36,13 @@ FIELDNAMES_FULL = [
     "slack_golden",
     "slack_test",
     "slack_ratio",
+    # 新增：slack_diff / AT_ref / clock_period 及 PASS/FAIL
+    "slack_diff",
+    "AT_ref",
+    "clock_period",
+    "slack_diff_AT_ref_ratio",
+    "slack_diff_clock_period_ratio",
+    "slack_pass",
     # 新增：launch/data 段延迟
     "launch_clock_delay_golden",
     "launch_clock_delay_test",
@@ -64,7 +75,7 @@ FIELDNAMES_SIMPLE = [
     "endpoint",
     "arrival_time_ratio",
     "required_time_ratio",
-    "slack_ratio",
+    "slack_diff",
     # 简化版额外带上两段 delay 差异，便于快速筛选
     "launch_clock_delay_diff",
     "data_path_delay_diff",
@@ -127,6 +138,69 @@ def _build_compare_row(g: Dict[str, str], t: Dict[str, str]) -> Dict[str, str]:
             "slack_golden": g.get("slack", ""),
             "slack_test": t.get("slack", ""),
             "slack_ratio": _ratio(ts, gs),
+        }
+    )
+
+    # slack PASS/FAIL（基于 golden/common_pin_delay + clock_period）
+    slack_pass = ""
+    slack_diff = None
+    AT_ref = None
+    clock_period = None
+    slack_diff_AT_ref_ratio = None
+    slack_diff_clock_period_ratio = None
+
+    if gs is not None and ts is not None:
+        slack_diff = ts - gs
+        # 1) abs(slack_diff) < 5ps -> PASS
+        if abs(slack_diff) < SLACK_ABS_PASS_PS:
+            slack_pass = "PASS"
+        else:
+            # 2) slack_diff 不在阈值内：仅当 golden_slack > 0 时进入二级检查
+            if gs > 0:
+                arrival_golden = _float_or_none(g.get("arrival_time"))
+                common_pin_delay_golden = _float_or_none(g.get("common_pin_delay"))
+                clock_period = _float_or_none(g.get("clock_period"))
+                if arrival_golden is not None and common_pin_delay_golden is not None:
+                    AT_ref = arrival_golden - common_pin_delay_golden
+
+                if (
+                    AT_ref is not None
+                    and clock_period is not None
+                    and AT_ref != 0
+                    and clock_period != 0
+                ):
+                    slack_diff_AT_ref_ratio = slack_diff / AT_ref
+                    slack_diff_clock_period_ratio = slack_diff / clock_period
+                    if (
+                        abs(slack_diff_AT_ref_ratio) < SLACK_REL_PASS
+                        and abs(slack_diff_clock_period_ratio) < SLACK_REL_PASS
+                    ):
+                        slack_pass = "PASS"
+                    else:
+                        slack_pass = "FAIL"
+                else:
+                    slack_pass = "FAIL"
+            else:
+                slack_pass = "FAIL"
+
+    def _fmt_num(v: float | None, nd: int = 6) -> str:
+        if v is None:
+            return ""
+        return f"{v:.{nd}f}"
+
+    def _fmt_ratio_percent(v: float | None) -> str:
+        if v is None:
+            return ""
+        return f"{v * 100:.3f}%"
+
+    row.update(
+        {
+            "slack_diff": _fmt_num(slack_diff, 6),
+            "AT_ref": _fmt_num(AT_ref, 6),
+            "clock_period": _fmt_num(clock_period, 6),
+            "slack_diff_AT_ref_ratio": _fmt_ratio_percent(slack_diff_AT_ref_ratio),
+            "slack_diff_clock_period_ratio": _fmt_ratio_percent(slack_diff_clock_period_ratio),
+            "slack_pass": slack_pass,
         }
     )
 
@@ -347,9 +421,10 @@ def run_compare_path_summary(args) -> int:
     html_path = out_path.parent / "compare_report.html"
     if not getattr(args, "no_html", False):
         page_size = int(getattr(args, "page_size", 100) or 100)
-        sort_by = (getattr(args, "sort_by", "slack_ratio") or "slack_ratio").strip()
+        sort_by = (getattr(args, "sort_by", "slack_diff") or "slack_diff").strip()
         sort_abs = bool(getattr(args, "sort_abs", True))
         detail_scope = (getattr(args, "detail_scope", "first_page") or "first_page").strip()
+        detail_top_n = int(getattr(args, "detail_top_n", 50) or 0)
         generate_html_report(
             html_path=html_path,
             golden_path=golden_path,
@@ -367,6 +442,7 @@ def run_compare_path_summary(args) -> int:
             sort_by=sort_by,
             sort_abs=sort_abs,
             detail_scope=detail_scope,
+            detail_top_n=detail_top_n,
         )
 
     log_util.brief(f"golden_file -> {golden_path}")

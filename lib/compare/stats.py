@@ -81,7 +81,7 @@ def compute_stats(
     - 段级 diff 列（launch/data delay、CRP/uncertainty）按绝对值统计
     """
     # 比例列固定为现有实现，以保持兼容
-    ratio_columns = ["arrival_time_ratio", "required_time_ratio", "slack_ratio"]
+    ratio_columns = ["arrival_time_ratio", "required_time_ratio", "slack_diff"]
 
     stats_by_col: Dict[str, Dict] = {}
     for col in ratio_columns:
@@ -123,8 +123,8 @@ def compute_stats(
     correlations: Dict[str, Dict] = {}
     for c1, c2 in [
         ("arrival_time_ratio", "required_time_ratio"),
-        ("arrival_time_ratio", "slack_ratio"),
-        ("required_time_ratio", "slack_ratio"),
+        ("arrival_time_ratio", "slack_diff"),
+        ("required_time_ratio", "slack_diff"),
     ]:
         pair_vals = [
             (_float(row.get(c1, "")), _float(row.get(c2, "")))
@@ -174,6 +174,13 @@ def compute_stats(
             }
         segment_stats[col] = ss
 
+    # slack PASS/FAIL 统计（来自 compare_result.csv 中的 slack_pass）
+    slack_pass_count = sum(1 for r in rows if (r.get("slack_pass") or "").strip().upper() == "PASS")
+    slack_fail_count = sum(1 for r in rows if (r.get("slack_pass") or "").strip().upper() == "FAIL")
+    slack_total = slack_pass_count + slack_fail_count
+    slack_unknown_count = max(0, len(rows) - slack_total)
+    slack_pass_ratio = (slack_pass_count / slack_total) if slack_total else 0.0
+
     return {
         "input_files": {
             "golden_file": str(golden_file or ""),
@@ -185,6 +192,12 @@ def compute_stats(
         "correlations": correlations,
         "columns": ratio_columns,
         "numeric_counts": {k: len(v) for k, v in data_by_col.items()},
+        "slack_pass_stats": {
+            "pass_count": slack_pass_count,
+            "fail_count": slack_fail_count,
+            "unknown_count": slack_unknown_count,
+            "pass_ratio": slack_pass_ratio,
+        },
     }
 
 

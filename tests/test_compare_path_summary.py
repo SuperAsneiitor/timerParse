@@ -53,14 +53,14 @@ class TestComparePathSummary(unittest.TestCase):
         result = cps.compare(cps.load_summary(str(self.golden)), cps.load_summary(str(self.test)))
         self.assertEqual(result[0]["arrival_time_ratio"], "10.000%")
         self.assertEqual(result[0]["required_time_ratio"], "8.333%")
-        self.assertEqual(result[0]["slack_ratio"], "25.000%")
+        self.assertEqual(result[0]["slack_diff"], "0.500000")
 
         stats = cps.compute_stats(result, threshold=5)
 
         self.assertEqual(stats["sample_count"], 3)
         self.assertIn("arrival_time_ratio", stats["metrics"])
         self.assertIn("required_time_ratio", stats["metrics"])
-        self.assertIn("slack_ratio", stats["metrics"])
+        self.assertIn("slack_diff", stats["metrics"])
 
         arrival = stats["metrics"]["arrival_time_ratio"]
         self.assertEqual(arrival["count"], 3)
@@ -130,11 +130,11 @@ class TestComparePathSummary(unittest.TestCase):
         expected_chart_files = [
             "hist_arrival_time_ratio.png",
             "hist_required_time_ratio.png",
-            "hist_slack_ratio.png",
+            "hist_slack_diff.png",
             "boxplot_ratios.png",
             "scatter_arrival_time_ratio_vs_required_time_ratio.png",
-            "scatter_arrival_time_ratio_vs_slack_ratio.png",
-            "scatter_required_time_ratio_vs_slack_ratio.png",
+            "scatter_arrival_time_ratio_vs_slack_diff.png",
+            "scatter_required_time_ratio_vs_slack_diff.png",
         ]
         for name in expected_chart_files:
             self.assertTrue((charts_dir / name).is_file(), msg=f"missing chart: {name}")
@@ -145,6 +145,178 @@ class TestComparePathSummary(unittest.TestCase):
         self.assertIn("相关性摘要", html_text)
         self.assertIn("图表", html_text)
         self.assertIn("%", html_text)
+
+    def test_slack_pass_abs_diff_under_5ps(self):
+        """abs(slack_diff) < 5ps -> PASS（不依赖 AT_ref/clock_period）。"""
+        golden_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "10",
+                "required_time": "12",
+                "slack": "10",
+                "common_pin_delay": "0",
+                "clock_period": "100",
+            }
+        ]
+        test_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "10",
+                "required_time": "12",
+                "slack": "14",  # slack_diff = +4
+                "common_pin_delay": "0",
+                "clock_period": "100",
+            }
+        ]
+        result = cps.compare(golden_rows, test_rows)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].get("slack_pass"), "PASS")
+        self.assertEqual(result[0].get("AT_ref"), "")
+        self.assertEqual(result[0].get("slack_diff_AT_ref_ratio"), "")
+
+    def test_slack_pass_when_golden_slack_le_0_fails(self):
+        """abs(slack_diff) >= 5ps 且 golden_slack <= 0 -> FAIL。"""
+        golden_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "10",
+                "required_time": "12",
+                "slack": "-1",
+                "common_pin_delay": "0",
+                "clock_period": "100",
+            }
+        ]
+        test_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "10",
+                "required_time": "12",
+                "slack": "6",  # slack_diff = +7
+                "common_pin_delay": "0",
+                "clock_period": "100",
+            }
+        ]
+        result = cps.compare(golden_rows, test_rows)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].get("slack_pass"), "FAIL")
+
+    def test_slack_pass_ratio_both_under_5pct(self):
+        """golden_slack > 0 时：abs(slack_diff/AT_ref) < 5% 且 abs(slack_diff/clock_period) < 5% -> PASS。"""
+        golden_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "210",
+                "required_time": "12",
+                "slack": "10",
+                "common_pin_delay": "10",  # AT_ref = 210 - 10 = 200
+                "clock_period": "200",
+            }
+        ]
+        test_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "210",
+                "required_time": "12",
+                "slack": "16",  # slack_diff = +6
+                "common_pin_delay": "10",
+                "clock_period": "200",
+            }
+        ]
+        result = cps.compare(golden_rows, test_rows)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].get("slack_pass"), "PASS")
+        self.assertEqual(result[0].get("slack_diff_AT_ref_ratio"), "3.000%")
+        self.assertEqual(result[0].get("slack_diff_clock_period_ratio"), "3.000%")
+
+    def test_slack_pass_ratio_one_over_5pct_fails(self):
+        """当其中一个比值 >= 5% -> FAIL。"""
+        golden_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "210",
+                "required_time": "12",
+                "slack": "10",
+                "common_pin_delay": "10",  # AT_ref = 200
+                "clock_period": "100",
+            }
+        ]
+        test_rows = [
+            {
+                "path_id": "1",
+                "startpoint": "U1/A",
+                "endpoint": "U2/Z",
+                "arrival_time": "210",
+                "required_time": "12",
+                "slack": "16",  # slack_diff = +6
+                "common_pin_delay": "10",
+                "clock_period": "100",
+            }
+        ]
+        result = cps.compare(golden_rows, test_rows)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].get("slack_pass"), "FAIL")
+        self.assertEqual(result[0].get("slack_diff_AT_ref_ratio"), "3.000%")
+        self.assertEqual(result[0].get("slack_diff_clock_period_ratio"), "6.000%")
+
+    def test_cli_detail_topn_generates_only_topn_detail_pages(self):
+        """--detail-scope topN 只为 Top-N 生成 paths/path_*.html。"""
+        def write_launch_csv(path: Path) -> None:
+            # 只提供 loadSegmentCsvByPathId / buildPointSegmentHtml 需要的最小字段
+            fieldnames = ["path_id", "point_index", "point"]
+            rows = []
+            for pid in ("1", "2", "3"):
+                rows.append({"path_id": pid, "point_index": "1", "point": "p_clk"})
+                rows.append({"path_id": pid, "point_index": "2", "point": "p_data"})
+            with open(path, "w", encoding="utf-8-sig", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=fieldnames)
+                w.writeheader()
+                w.writerows(rows)
+
+        golden_launch = self.workdir / "golden_launch_path.csv"
+        test_launch = self.workdir / "test_launch_path.csv"
+        write_launch_csv(golden_launch)
+        write_launch_csv(test_launch)
+
+        out_dir = self.workdir / "topn_out"
+        out = out_dir / "compare_result.csv"
+
+        proc = self._run_cli(
+            [
+                "-o",
+                str(out),
+                "--no-charts",
+                "--detail-scope",
+                "topN",
+                "--detail-top-n",
+                "2",
+                "--golden-launch-csv",
+                str(golden_launch),
+                "--test-launch-csv",
+                str(test_launch),
+            ]
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+
+        paths_dir = out_dir / "paths"
+        self.assertTrue(paths_dir.is_dir())
+        # top2 应对应 path_1.html / path_2.html（默认按 slack_diff abs 降序）
+        self.assertTrue((paths_dir / "path_1.html").is_file())
+        self.assertTrue((paths_dir / "path_2.html").is_file())
+        self.assertFalse((paths_dir / "path_3.html").exists())
 
 
 if __name__ == "__main__":

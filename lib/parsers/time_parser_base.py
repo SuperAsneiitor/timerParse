@@ -74,6 +74,13 @@ class TimeParser(ABC):
             "endpoint",
             "arrival_time",
             "required_time",
+            # Last common pin（PT/Timing report 的公共点概念）相关派生字段：
+            # - last_common_pin：解析 header 的 Last common pin（解析失败时会 fallback）
+            # - common_pin_delay：common pin 处累计延迟（PT/format1 用 Path；format2 用 Time）
+            # - clock_period：capture 侧第一行 clock 的周期度量（PT/format1 用 Incr；format2 用 Delay）
+            "last_common_pin",
+            "common_pin_delay",
+            "clock_period",
             "clock_reconvergence_pessimism",
             "clock_uncertainty",
             "slack",

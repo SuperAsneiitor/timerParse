@@ -54,19 +54,19 @@ def generate_charts(
     bins: int = 50,
     ratio_columns: List[str] | None = None,
 ) -> Dict[str, str]:
-    """基于比例列生成直方图/箱线图/散点图，帮助观察总体差异分布。"""
+    """基于关键数值列生成直方图/箱线图/散点图，帮助观察总体差异分布。"""
     if not _ensure_matplotlib():
         return {}
     import matplotlib.pyplot as plt
 
     if ratio_columns is None:
-        ratio_columns = ["arrival_time_ratio", "required_time_ratio", "slack_ratio"]
+        ratio_columns = ["arrival_time_ratio", "required_time_ratio", "slack_diff"]
 
     charts_dir.mkdir(parents=True, exist_ok=True)
     chart_files: Dict[str, str] = {}
     data = {col: _to_number_list(rows, col) for col in ratio_columns}
 
-    # 各比例列直方图
+    # 各关键列直方图
     for col in ratio_columns:
         vals = data[col]
         if not vals:
@@ -96,11 +96,11 @@ def generate_charts(
         plt.close()
         chart_files["boxplot"] = out.name
 
-    # 比例列之间散点图
+    # 关键列之间散点图
     for x_col, y_col in [
         ("arrival_time_ratio", "required_time_ratio"),
-        ("arrival_time_ratio", "slack_ratio"),
-        ("required_time_ratio", "slack_ratio"),
+        ("arrival_time_ratio", "slack_diff"),
+        ("required_time_ratio", "slack_diff"),
     ]:
         points = []
         for row in rows:

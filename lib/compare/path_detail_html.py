@@ -127,7 +127,7 @@ def generatePathDetailPage(
     rows_main = [
         cell("Arrival time", "arrival_time_golden", "arrival_time_test", "arrival_time_ratio"),
         cell("Required time", "required_time_golden", "required_time_test", "required_time_ratio"),
-        cell("Slack", "slack_golden", "slack_test", "slack_ratio"),
+        cell("Slack", "slack_golden", "slack_test", "slack_diff"),
     ]
     rows_seg = [
         cell("Launch clock delay", "launch_clock_delay_golden", "launch_clock_delay_test", "launch_clock_delay_diff"),

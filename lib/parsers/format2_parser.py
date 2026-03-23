@@ -108,6 +108,12 @@ class Format2Parser(TimeParser):
     _re_slack_line = re.compile(r"slack\s*\((?:violated|met)\)", re.IGNORECASE)
     _re_sep = re.compile(r"^-=+\s*$")
     _re_data_arrival = re.compile(r"data arrival time", re.IGNORECASE)
+    _re_last_common_pin = re.compile(
+        r"Last\s+common\s+pin\s*[:=]\s*(.+?)\s*$", re.IGNORECASE
+    )
+    _re_last_common_pin2 = re.compile(
+        r"Last\s+common\s+pin\s+(.+?)\s*$", re.IGNORECASE
+    )
 
     def scanPathBlocks(self, report_path: str) -> list[tuple[int, str]]:
         with open(report_path, "r", encoding="utf-8", errors="replace") as f:
@@ -146,6 +152,12 @@ class Format2Parser(TimeParser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
+            # Last common pin（公共点概念）相关派生字段
+            "last_common_pin": "",
+            # common pin 处的累计延迟（format2 用 Time）
+            "common_pin_delay": "",
+            # capture 侧第一行 clock 的周期度量（format2 用 Delay）
+            "clock_period": "",
             "uncertainty": "",
         }
         launch_rows: list[dict[str, Any]] = []
@@ -175,6 +187,14 @@ class Format2Parser(TimeParser):
                 if sm:
                     meta["slack_status"] = sm.group(1).strip().upper()
                 break
+
+        # 兼容 Last common pin 行在 slack 之后才出现：全局扫描兜底
+        if not meta.get("last_common_pin"):
+            for line in lines:
+                m_lcp = self._re_last_common_pin.search(line) or self._re_last_common_pin2.search(line)
+                if m_lcp:
+                    meta["last_common_pin"] = m_lcp.group(1).strip()
+                    break
 
         col_pos: dict[str, int] = {}
         table_start = 0
@@ -241,6 +261,35 @@ class Format2Parser(TimeParser):
                         break
 
         self._fillUncertainty(lines, meta)
+
+        # 派生字段：last_common_pin/common_pin_delay/clock_period
+        # 约定：common_pin_delay = Time(common)；clock_period = capture 侧第一行 clock 的 Delay
+        if not meta.get("last_common_pin"):
+            meta["last_common_pin"] = meta.get("startpoint", "")
+
+        lcp_norm = self._normalizePin(meta.get("last_common_pin", ""))
+
+        def _findCommonPinDelay(rows: list[dict[str, Any]]) -> str:
+            for r in rows:
+                p_norm = self._normalizePin(r.get("point", "") or "")
+                if lcp_norm and p_norm == lcp_norm:
+                    return str(r.get("Time", "") or "")
+            return ""
+
+        meta["common_pin_delay"] = _findCommonPinDelay(capture_rows) or _findCommonPinDelay(launch_rows) or ""
+
+        clock_period = ""
+        # 优先取 Type=clock 的首行 Delay，其次取第一行 Delay
+        for r in capture_rows:
+            if (r.get("Type") or "").strip().lower() == "clock":
+                val = str(r.get("Delay", "") or "").strip()
+                if val:
+                    clock_period = val
+                    break
+        if not clock_period and capture_rows:
+            clock_period = str(capture_rows[0].get("Delay", "") or "").strip()
+        meta["clock_period"] = clock_period
+
         return meta, launch_rows, capture_rows
 
     def _valuesByColumns(self, content: str, col_pos: dict[str, int]) -> dict[str, str]:
@@ -323,6 +372,12 @@ class Format2Parser(TimeParser):
         x = parts[0] if len(parts) >= 1 else ""
         y = parts[1] if len(parts) >= 2 else ""
         return derate_part, x, y
+
+    # -----------------------------------------------------------------------
+    # Backward-compatible alias（旧测试/旧调用使用 snake_case）
+    # -----------------------------------------------------------------------
+    def _split_derate_and_xy(self, derate_cell: str) -> tuple[str, str, str]:
+        return self._splitDerateAndXy(derate_cell)
 
     def _xyCellFromRaw(self, raw: dict[str, str]) -> str:
         return ((raw.get("x-coord") or "").strip() + " " + (raw.get("y-coord") or "").strip()).strip()
@@ -554,4 +609,12 @@ class Format2Parser(TimeParser):
         point = _descToPoint(desc)
         attrs["Description"] = point
         return point, attrs
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible aliases (旧导入路径使用下划线命名)
+# ---------------------------------------------------------------------------
+_desc_to_point = _descToPoint
+_tail_n_numeric_and_desc = _tailNNumericAndDesc
+_is_numeric_token = _isNumericToken
 

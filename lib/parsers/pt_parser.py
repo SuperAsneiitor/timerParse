@@ -55,6 +55,12 @@ class PtParser(Format1Parser):
     _re_clocked_by = re.compile(r"clocked by ([^\s)]+)")
     _re_slack = re.compile(r"^\s+slack\s+\((VIOLATED|MET)\)\s")
     _re_slack_value = re.compile(r"(-?\d+\.\d+)\s*$")
+    _re_last_common_pin = re.compile(
+        r"^\s*Last\s+common\s+pin\s*[:=]\s*(.+?)\s*$", re.IGNORECASE
+    )
+    _re_last_common_pin2 = re.compile(
+        r"^\s*Last\s+common\s+pin\s+(.+?)\s*$", re.IGNORECASE
+    )
     _re_point_header = re.compile(r"^\s+Point\s+", re.IGNORECASE)
     _re_sep_line = re.compile(r"^\s+-{3,}\s*$")
     _re_clock_rise = re.compile(r"^\s+clock\s+\S+\s+\(rise\s+edge\)\s")
@@ -79,6 +85,12 @@ class PtParser(Format1Parser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
+            # Last common pin（公共点概念）相关派生字段
+            "last_common_pin": "",
+            # common pin 处的累计延迟（PT/format1 用 Path）
+            "common_pin_delay": "",
+            # capture 侧第一行 clock 的周期度量（PT/format1 用 Incr）
+            "clock_period": "",
             "uncertainty": "",
         }
         launch_rows: list[dict[str, Any]] = []
@@ -107,6 +119,14 @@ class PtParser(Format1Parser):
                 vm = self._re_slack_value.search(line)
                 meta["slack"] = vm.group(1).strip() if vm else ""
                 break
+
+        # 兼容 Last common pin 行在 slack 之后才出现：全局扫描兜底
+        if not meta.get("last_common_pin"):
+            for line in lines:
+                m_lcp = self._re_last_common_pin.match(line) or self._re_last_common_pin2.match(line)
+                if m_lcp:
+                    meta["last_common_pin"] = m_lcp.group(1).strip()
+                    break
 
         col_pos: dict[str, int] = {}
         table_start = 0
@@ -191,6 +211,31 @@ class PtParser(Format1Parser):
                         break
 
         self._fillUncertainty(lines, meta)
+
+        # 派生字段：last_common_pin/common_pin_delay/clock_period
+        if not meta.get("last_common_pin"):
+            meta["last_common_pin"] = meta.get("startpoint", "")
+
+        lcp_norm = self._normalizePin(meta.get("last_common_pin", ""))
+        metric_key = "Path"
+
+        def _findCommonPinDelay(rows: list[dict[str, Any]]) -> str:
+            for r in rows:
+                p_norm = self._normalizePin(r.get("point", "") or "")
+                if lcp_norm and p_norm == lcp_norm:
+                    return str(r.get(metric_key, "") or "")
+            return ""
+
+        meta["common_pin_delay"] = _findCommonPinDelay(capture_rows) or _findCommonPinDelay(launch_rows) or ""
+
+        clock_period = ""
+        for r in capture_rows:
+            val = str(r.get("Incr", "") or "").strip()
+            if val:
+                clock_period = val
+                break
+        meta["clock_period"] = clock_period
+
         return meta, launch_rows, capture_rows
 
     def _classify_row_kind(self, point: str, line: str, segment_row_index: int, in_launch: bool) -> str:
