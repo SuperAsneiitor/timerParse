@@ -81,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
         _repo,
     )
+
     run(
         [
             sys.executable,
@@ -97,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
         _repo,
     )
+
     run(
         [
             sys.executable,
@@ -132,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
         _repo,
     )
+
     run(
         [
             sys.executable,
@@ -165,6 +168,66 @@ def main(argv: list[str] | None = None) -> int:
             str(args.jobs),
             "--log-level",
             args.log_level,
+        ],
+        _repo,
+    )
+
+    _gen_pt_common = [
+        "--extra",
+        "-delay_type max -path_type full_clock",
+        "--log-level",
+        args.log_level,
+    ]
+
+    # 额外验证：三份 launch_path 均跑 gen-pt（format1/format2 默认 exact，PT 用 instance）
+    run(
+        [
+            sys.executable,
+            "-m",
+            "lib",
+            "gen-pt",
+            str(ex1 / "launch_path.csv"),
+            "-o",
+            str(reports / "report_timing_format1.tcl"),
+            "--output-file",
+            str(reports / "format1_report_paths.rpt"),
+            "--startpoint-match",
+            "exact",
+            *_gen_pt_common,
+        ],
+        _repo,
+    )
+    run(
+        [
+            sys.executable,
+            "-m",
+            "lib",
+            "gen-pt",
+            str(ex2 / "launch_path.csv"),
+            "-o",
+            str(reports / "report_timing_format2.tcl"),
+            "--output-file",
+            str(reports / "format2_report_paths.rpt"),
+            "--startpoint-match",
+            "exact",
+            *_gen_pt_common,
+        ],
+        _repo,
+    )
+    run(
+        [
+            sys.executable,
+            "-m",
+            "lib",
+            "gen-pt",
+            str(expt / "launch_path.csv"),
+            "-o",
+            str(reports / "report_timing_pt.tcl"),
+            "--output-file",
+            str(reports / "pt_report_paths.rpt"),
+            "--startpoint-match",
+            "instance",
+            *_gen_pt_common,
         ],
         _repo,
     )
@@ -244,6 +307,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     log_util.brief(f"Validation flow done: {base}")
+    log_util.brief(
+        "Generated gen-pt TCL -> "
+        f"{reports / 'report_timing_format1.tcl'}, "
+        f"{reports / 'report_timing_format2.tcl'}, "
+        f"{reports / 'report_timing_pt.tcl'}"
+    )
     return 0
 
 

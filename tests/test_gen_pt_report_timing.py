@@ -45,6 +45,47 @@ class TestGenPtReportTiming(unittest.TestCase):
             ],
         )
 
+    def test_build_through_args_startpoint_is_instance_only(self):
+        """PT 风格：startpoint 为实例名，point 为 instance/pin，仍应从首引脚起收集 through。"""
+        rows = [
+            {"point": "clock clk (rise edge)", "point_index": "1", "trigger_edge": ""},
+            {
+                "point": "u_logic/path_1/U0/CK (CLKINV1)",
+                "point_index": "2",
+                "trigger_edge": "r",
+            },
+            {"point": "u_logic/path_1/U0/Z (CLKINV1) <-", "point_index": "3", "trigger_edge": "r"},
+            {"point": "u_logic/path_1/n0 (net)", "point_index": "4", "trigger_edge": ""},
+        ]
+        through = build_through_args(
+            rows,
+            startpoint="u_logic/path_1/U0",
+            startpoint_match="instance",
+        )
+        self.assertEqual(
+            through,
+            [
+                ("-rise_through", "u_logic/path_1/U0/CK"),
+                ("-rise_through", "u_logic/path_1/U0/Z"),
+            ],
+        )
+
+    def test_build_through_args_exact_skips_instance_only_points(self):
+        """默认 exact：startpoint 仅为实例名且 point 为 instance/pin 时不产生 through。"""
+        rows = [
+            {"point": "u_logic/path_1/U0/CK (CLKINV1)", "point_index": "1", "trigger_edge": "r"},
+        ]
+        through = build_through_args(rows, startpoint="u_logic/path_1/U0")
+        self.assertEqual(through, [])
+
+    def test_build_through_args_exact_strips_cell_on_startpoint(self):
+        """format2 常在 startpoint 列带 (CELL)，与 point 列 strip 后应对齐。"""
+        rows = [
+            {"point": "x_top/u0/Z (BUF)", "point_index": "1", "trigger_edge": "r"},
+        ]
+        through = build_through_args(rows, startpoint="x_top/u0/Z (BUF)")
+        self.assertEqual(through, [("-rise_through", "x_top/u0/Z")])
+
     def test_format_report_timing_redirect_to_output_file(self):
         """每条 report_timing 命令末尾都应追加 >> ${output_file}。"""
         cmd = format_report_timing(
@@ -159,6 +200,7 @@ class TestGenPtReportTiming(unittest.TestCase):
                 output_file=str(rpt_target),
                 rise_cmd="-rise_through",
                 fall_cmd="-fall_through",
+                startpoint_match="exact",
                 jobs=1,
             )
 

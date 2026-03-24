@@ -19,9 +19,9 @@ point_generator:
 
 title:
   attributes:
-    - { name: Startpoint, value: { type: format, template: "{startpoint} (falling edge-triggered flip-flop clocked by {clock})" } }
-    - { name: Endpoint, value: { type: format, template: "{endpoint} (rising edge-triggered flip-flop clocked by {clock})" } }
-    - { name: Common Pin, value: { type: ref, ref: common_pin } }
+    - { name: Startpoint, value: { type: format, template: "{startpoint_title} (falling edge-triggered flip-flop clocked by {clock})" } }
+    - { name: Endpoint, value: { type: format, template: "{endpoint_title} (rising edge-triggered flip-flop clocked by {clock})" } }
+    - { name: Common Pin, value: { type: ref, ref: common_pin_title } }
     - { name: Scenario, value: { type: ref, ref: scenario } }
     - { name: Path Group, value: { type: ref, ref: path_group } }
     - { name: Path Type, value: { type: ref, ref: path_type } }

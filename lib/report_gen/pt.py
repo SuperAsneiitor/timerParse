@@ -19,13 +19,6 @@ class PtReport(TimingReportTemplate):
         return s, ""
 
     @classmethod
-    def _instance_only(cls, point: str) -> str:
-        base, _cell = cls._strip_cell(point)
-        if "/" in base:
-            return base.rsplit("/", 1)[0]
-        return base
-
-    @classmethod
     def _capture_ck_from_endpoint(cls, endpoint: str) -> str:
         base, cell = cls._strip_cell(endpoint)
         if "/" in base:
@@ -41,11 +34,11 @@ class PtReport(TimingReportTemplate):
             spec = attr.get("value") or {}
             val = _str_value(ValueResolver.resolve_value(spec, {**path_ctx, "path": path_ctx}))
             if name == "Startpoint":
-                lines.append(f"  Startpoint: {self._instance_only(val)}")
+                lines.append(f"  Startpoint: {val}")
                 lines.append(f"              (rising edge-triggered flip-flop clocked by {clock})")
                 continue
             if name == "Endpoint":
-                lines.append(f"  Endpoint: {self._instance_only(val)}")
+                lines.append(f"  Endpoint: {val}")
                 lines.append(f"            (rising edge-triggered flip-flop clocked by {clock})")
                 continue
             lines.append(f"  {name}: {val}")

@@ -131,6 +131,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="GLOB",
         help="可选：使用通配符读取多个 launch_path CSV（例如 out/launch_path_part*.csv）；优先级高于位置参数",
     )
+    gp.add_argument(
+        "--startpoint-match",
+        choices=("exact", "instance"),
+        default="exact",
+        metavar="MODE",
+        help="起点匹配：exact=与 startpoint 列对齐（均去掉 (CELL) 后缀再比，默认）；"
+        "instance=再允许 PT 式「实例名 + point 为 instance/pin」",
+    )
     gp.add_argument("-j", "--jobs", type=int, default=1, metavar="N", help="多进程 worker 数")
 
     # compare

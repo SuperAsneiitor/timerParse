@@ -22,9 +22,9 @@ point_generator:
 
 title:
   attributes:
-    - { name: Startpoint, value: { type: ref, ref: startpoint } }
-    - { name: Endpoint, value: { type: ref, ref: endpoint } }
-    - { name: "Last common pin", value: { type: ref, ref: common_pin } }
+    - { name: Startpoint, value: { type: ref, ref: startpoint_title } }
+    - { name: Endpoint, value: { type: ref, ref: endpoint_title } }
+    - { name: "Last common pin", value: { type: ref, ref: common_pin_title } }
     - { name: Path Group, value: { type: ref, ref: path_group } }
     - { name: Path Type, value: { type: ref, ref: path_type } }
 

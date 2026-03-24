@@ -29,6 +29,14 @@ def _str_value(v: Any) -> str:
     return "" if v is None else str(v)
 
 
+def _strip_cell_suffix(point: str) -> str:
+    """去掉 pin 串末尾的 (CELL)，仅用于标题行 Startpoint/Endpoint/Common Pin；表格 Point 列不变。"""
+    s = (point or "").strip()
+    if " (" in s and ")" in s:
+        return s[: s.rfind(" (")].strip()
+    return s
+
+
 class ValueResolver:
     """YAML value 解析：fixed/enum/random/format/ref 等。"""
 
@@ -310,6 +318,9 @@ class TimingReportTemplate:
             ctx.setdefault("startpoint", "")
             ctx.setdefault("endpoint", "")
             ctx.setdefault("common_pin", "")
+        ctx["startpoint_title"] = _strip_cell_suffix(str(ctx.get("startpoint", "")))
+        ctx["endpoint_title"] = _strip_cell_suffix(str(ctx.get("endpoint", "")))
+        ctx["common_pin_title"] = _strip_cell_suffix(str(ctx.get("common_pin", "")))
         # capture 段在已知 common_pin 等上下文后再生成，便于使用 {common_pin} 等占位符
         capture_points = self._generate_segment_points(capture_rows, "capture", ctx, point_gen) if point_gen else []
         ctx["capture_points"] = capture_points

@@ -107,11 +107,30 @@ def _strip_cell_type(point: str) -> str:
     return point.strip()
 
 
+def _pin_matches_startpoint(
+    pin_ref: str,
+    startpoint: str,
+    startpoint_match: str = "exact",
+) -> bool:
+    """exact：pin 与 startpoint 列对齐（均去掉 (CELL) 后缀再比）；instance 再允许 instance/pin 前缀。"""
+    sp = (startpoint or "").strip()
+    pr = (pin_ref or "").strip()
+    if not sp or not pr:
+        return False
+    sp_norm = _strip_cell_type(sp)
+    if pr == sp_norm:
+        return True
+    if (startpoint_match or "exact").strip().lower() == "instance":
+        return pr.startswith(sp_norm + "/")
+    return False
+
+
 def build_through_args(
     points: list[dict],
     startpoint: str,
     rise_cmd: str = "-rise_through",
     fall_cmd: str = "-fall_through",
+    startpoint_match: str = "exact",
 ) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     found_start = False
@@ -119,7 +138,7 @@ def build_through_args(
         point = row.get("point", "").strip()
         pin_ref = _strip_cell_type(point)
         if not found_start:
-            if pin_ref == startpoint:
+            if _pin_matches_startpoint(pin_ref, startpoint, startpoint_match):
                 found_start = True
             else:
                 continue
@@ -175,15 +194,15 @@ def format_report_timing(
 
 
 def _worker_build_command(
-    args: tuple[int, list[dict], str, bool, str],
+    args: tuple[int, list[dict], str, bool, str, str],
 ) -> str:
-    path_id, rows, extra_args, wrap, report_file = args
+    path_id, rows, extra_args, wrap, report_file, startpoint_match = args
     if not rows:
         return ""
     start = rows[0]["startpoint"]
     startpoint_clock = rows[0].get("startpoint_clock", "").strip()
     endpoint_clock = rows[0].get("endpoint_clock", "").strip()
-    through_list = build_through_args(rows, start)
+    through_list = build_through_args(rows, start, startpoint_match=startpoint_match)
     return format_report_timing(
         path_id,
         startpoint_clock,
@@ -234,6 +253,11 @@ def run_gen_pt(args) -> int:
     if not report_file_target:
         report_file_target = str(getattr(args, "report_file", "report_file.rpt") or "report_file.rpt")
 
+    startpoint_match = (getattr(args, "startpoint_match", "exact") or "exact").strip().lower()
+    if startpoint_match not in ("exact", "instance"):
+        log_util.error(f"Error: --startpoint-match 仅支持 exact / instance，收到: {startpoint_match!r}")
+        return 1
+
     written = 0
     metric_columns: list[str] = []
     with open(out_path, "w", encoding="utf-8") as f:
@@ -255,7 +279,13 @@ def run_gen_pt(args) -> int:
                 start = rows[0].get("startpoint", "")
                 startpoint_clock = rows[0].get("startpoint_clock", "").strip()
                 endpoint_clock = rows[0].get("endpoint_clock", "").strip()
-                through_list = build_through_args(rows, start, rise_cmd=rise_cmd, fall_cmd=fall_cmd)
+                through_list = build_through_args(
+                    rows,
+                    start,
+                    rise_cmd=rise_cmd,
+                    fall_cmd=fall_cmd,
+                    startpoint_match=startpoint_match,
+                )
                 f.write(
                     format_report_timing(
                         pid,

@@ -48,7 +48,8 @@ if ($status != 0) exit 1
 echo "== Step2: Generate PT report_timing TCL =="
 python -m lib gen-pt "$OUT_BASE/source_extract/launch_path.csv" \
     -o "$OUT_BASE/pt_run/report_timing.tcl" \
-    --report-file "$OUT_BASE/pt_run/pt_report.rpt"
+    --report-file "$OUT_BASE/pt_run/pt_report.rpt" \
+    --extra "-delay_type max -path_type full_clock"
 if ($status != 0) exit 1
 
 # ===== 阶段4：封装 PT 执行脚本并运行 =====

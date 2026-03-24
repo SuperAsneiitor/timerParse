@@ -45,5 +45,6 @@ if ( "$root" == "" ) then
 endif
 
 cd "$root"
-exec $py -m lib "$cmd" $argv
+# 用 :q 保留每个 argv 元素的边界，避免带空格参数（如 --extra "... ..."）被二次拆分
+exec $py -m lib "$cmd" $argv:q
 
