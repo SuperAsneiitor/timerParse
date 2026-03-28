@@ -1,0 +1,6 @@
+﻿format: format1
+
+row_kind_numeric:
+  clock: [Incr, Path]
+  net: [Incr, Path]
+  pin: [Incr, Path]

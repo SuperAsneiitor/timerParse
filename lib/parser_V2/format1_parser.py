@@ -2,7 +2,7 @@
 Format1（APR 风格）Timing 报告解析器。
 
 解析流程：按 Startpoint 行分块 → 每块内解析表头与 Point 表 → 用 clock/data arrival/library setup
-边界区分 launch 与 capture 段，固定列宽提取 Fanout/Cap/Trans/Location/Incr/Path/trigger_edge。
+边界区分 launch 与 capture 段，固定列宽提取 Fanout/Derate/Cap/Trans/Location/Incr/Path/trigger_edge。
 """
 from __future__ import annotations
 
@@ -10,17 +10,22 @@ import re
 from typing import Any, Dict, List
 
 from .time_parser_base import TimeParser
+from .layout_runtime import LayoutRuntime
 
 
 class Format1Parser(TimeParser):
-    """Format1(APR) 报告解析器。表头含 Point, Fanout, Cap, Trans, Location, Incr, Path；launch/capture 按 clock 与 data arrival 边界划分。"""
+    """Format1(APR) 报告解析器。"""
 
-    default_attrs_order = ["Fanout", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"]
+    def __init__(self, attrs_order: list[str] | None = None, attrs_by_type: dict[str, list[str]] | None = None) -> None:
+        super().__init__(attrs_order, attrs_by_type)
+        self._layout_runtime = LayoutRuntime("format1")
+
+    default_attrs_order = ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"]
     skip_first_rows = 2
     default_attrs_by_type = {
         "net": ["Fanout"],
-        "input_pin": ["Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
-        "output_pin": ["Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
+        "input_pin": ["Derate", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
+        "output_pin": ["Derate", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
     }
 
     _output_pin_names = frozenset({"Q", "Z", "ZN", "ZP"})
@@ -87,17 +92,17 @@ class Format1Parser(TimeParser):
         self._fillRequiredAndArrival(lines, meta)
         self._fillUncertainty(lines, meta)
 
-        # 派生字段：last_common_pin/common_pin_delay/clock_period
-        # 约定：common_pin_delay = Path(common)，clock_period = capture 侧第一行 clock 的 Incr
+        #         ast_common_pin/common_pin_delay/clock_period
+        #      ommon_pin_delay = Path(common)  lock_period = capture       ?clock  ?Incr
         if not meta.get("last_common_pin"):
-            # 兼容 header 中 Last common pin 出现在 slack 之后的情况：此处全局扫描
+            #     header  ?Last common pin     ?slack                   
             for line in lines:
                 m_lcp = self._re_last_common_pin.match(line) or self._re_last_common_pin2.match(line)
                 if m_lcp:
                     meta["last_common_pin"] = m_lcp.group(1).strip()
                     break
 
-        # fallback：如果仍拿不到 last_common_pin，则用 startpoint 近似
+        # fallback          ?last_common_pin    ?startpoint    
         if not meta.get("last_common_pin"):
             meta["last_common_pin"] = meta.get("startpoint", "")
 
@@ -113,7 +118,7 @@ class Format1Parser(TimeParser):
 
         meta["common_pin_delay"] = _findCommonPinDelay(capture_rows) or _findCommonPinDelay(launch_rows) or ""
 
-        # capture 第一行（或第一个非空）Incr 作为 clock_period
+        # capture                  Incr     clock_period
         clock_period = ""
         for r in capture_rows:
             val = str(r.get("Incr", "") or "").strip()
@@ -126,7 +131,7 @@ class Format1Parser(TimeParser):
 
     @staticmethod
     def _defaultMeta(path_id: int) -> dict[str, Any]:
-        """返回单 path 的默认 meta 字典。"""
+        """    ?path     ?meta     """
         return {
             "path_id": path_id,
             "startpoint": "",
@@ -137,17 +142,17 @@ class Format1Parser(TimeParser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
-            # Last common pin（公共点概念）相关派生字段
+            # Last common pin                   ?
             "last_common_pin": "",
-            # common pin 处的累计延迟（PT/format1 用 Path）
+            # common pin            T/format1  ?Path ?
             "common_pin_delay": "",
-            # capture 侧第一行 clock 的周期度量（PT/format1 用 Incr）
+            # capture       ?clock          PT/format1  ?Incr ?
             "clock_period": "",
             "uncertainty": "",
         }
 
     def _fillMetaFromHeader(self, lines: list[str], meta: dict[str, Any]) -> None:
-        """从 path 文本前部解析 Startpoint/Endpoint/slack 等写入 meta。"""
+        """ ?path           Startpoint/Endpoint/slack     ?meta """
         for line in lines:
             m = self._re_startpoint.match(line)
             if m:
@@ -169,7 +174,7 @@ class Format1Parser(TimeParser):
                 break
 
     def _findTableStart(self, lines: list[str]) -> tuple[dict[str, int], int]:
-        """定位 Point 表头行与列位置，返回 (col_pos, table_start_row)。"""
+        """    Point                 (col_pos, table_start_row) """
         col_pos: dict[str, int] = {}
         table_start = 0
         for idx, line in enumerate(lines):
@@ -191,11 +196,11 @@ class Format1Parser(TimeParser):
         in_launch: bool,
     ) -> str:
         """
-        根据行内容与 point 名粗略分类当前点表行为:
-        - clock: clock 行
-        - net:   含 (net) 的行
-        - pin:   其余 pin 行
-        其他返回空串，表示沿用定宽解析结果。
+                  point                 ?
+        - clock: clock  ?
+        - net:    ?(net)    
+        - pin:       pin  ?
+                                   ?
         """
         if self._re_clock_start.match(line):
             return "clock"
@@ -211,22 +216,22 @@ class Format1Parser(TimeParser):
         col_pos: dict[str, int],
         row_kind: str,
     ) -> Dict[str, str] | None:
-        """
-        基于 row_kind + 数值 token 顺序解析当前行的数值列。
-
-        若无法可靠映射（无数字或 row_kind 未知），返回 None，调用方应回退到 parseFixedWidthAttrs 的 attrs。
-        """
-        # 行类型未知时不启用数值映射
+        """  row_kind         Incr/Path         """
         if not row_kind:
             return None
         tokens = re.findall(r"-?\d+(?:\.\d+)?", line)
         if not tokens:
             return None
 
-        # 只针对易截断的 Incr/Path 做“数值顺序”解析，Cap/Trans/Fanout 仍由定宽解析负责，
-        # 以兼顾内部生成报告与外部 APR 报告。
         attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
-        if row_kind == "clock":
+        layout_attrs = self._layout_runtime.extractRowKindNumeric(row_kind, line)
+        if layout_attrs:
+            for col, val in layout_attrs.items():
+                if col in attrs and val:
+                    attrs[col] = val
+            return attrs
+
+        if row_kind in ("clock", "net", "pin"):
             if len(tokens) >= 2:
                 attrs["Incr"] = tokens[-2]
                 attrs["Path"] = tokens[-1]
@@ -234,27 +239,6 @@ class Format1Parser(TimeParser):
                 attrs["Path"] = tokens[-1]
             return attrs
 
-        if row_kind == "net":
-            # 保留 Fanout/Cap 的定宽结果，仅从尾部补 Incr/Path，避免被坐标截断
-            if len(tokens) >= 2:
-                attrs["Incr"] = tokens[-2]
-                attrs["Path"] = tokens[-1]
-            elif len(tokens) == 1:
-                attrs["Path"] = tokens[-1]
-            return attrs
-
-        if row_kind == "pin":
-            # 典型行模式：
-            #   ... Cap  Trans   (x, y)   Incr   Path edge
-            # 只用最后两个数字推导 Incr/Path，Cap/Trans 仍用定宽解析结果。
-            if len(tokens) >= 2:
-                attrs["Incr"] = tokens[-2]
-                attrs["Path"] = tokens[-1]
-            elif len(tokens) == 1:
-                attrs["Path"] = tokens[-1]
-            return attrs
-
-        # 未知 row_kind，回退
         return attrs
 
     def _parseLaunchSegment(
@@ -265,7 +249,7 @@ class Format1Parser(TimeParser):
         table_start: int,
         launch_rows: list[dict[str, Any]],
     ) -> None:
-        """从表格区解析 launch 段（从 clock 行到 data arrival time 行）。"""
+        """          launch     ?clock     data arrival time     """
         in_launch = False
         launch_start_idx = -1
         for j in range(table_start, len(lines)):
@@ -314,7 +298,7 @@ class Format1Parser(TimeParser):
         table_start: int,
         capture_rows: list[dict[str, Any]],
     ) -> None:
-        """从表格区解析 capture 段（data arrival 之后的 clock 行到 library setup 行）。"""
+        """          capture    data arrival     ?clock     library setup     """
         after_data_arrival = False
         in_capture = False
         capture_start_idx = -1
@@ -323,7 +307,7 @@ class Format1Parser(TimeParser):
             if self._re_data_arrival.match(line):
                 after_data_arrival = True
                 continue
-            if after_data_arrival and self._re_clock_start.match(line):
+            if after_data_arrival and (not in_capture) and self._re_clock_start.match(line):
                 in_capture = True
                 capture_start_idx = j
                 continue
@@ -357,7 +341,7 @@ class Format1Parser(TimeParser):
                 break
 
     def _fillRequiredAndArrival(self, lines: list[str], meta: dict[str, Any]) -> None:
-        """从行文本中补全 data required time / data arrival time（若前面未填）。"""
+        """          ?data required time / data arrival time            """
         for line in lines:
             if "data required time" in line:
                 vm = re.search(r"(-?\d+\.\d+)\s*$", line)
@@ -374,7 +358,7 @@ class Format1Parser(TimeParser):
 
     @staticmethod
     def _extractTriggerEdgeFromPath(attrs: dict[str, Any]) -> dict[str, Any]:
-        """从 Path 列末尾提取 r/f 作为 trigger_edge，并从 Path 中移除该后缀。"""
+        """ ?Path        ?r/f     trigger_edge    ?Path           """
         path_val = str(attrs.get("Path", "") or "").strip()
         if not path_val:
             attrs["trigger_edge"] = ""
@@ -390,12 +374,12 @@ class Format1Parser(TimeParser):
 
     @staticmethod
     def _extractTriggerEdgeFromLine(line: str) -> str:
-        """从整行末尾提取 trigger_edge（r/f）。"""
+        """          ?trigger_edge  /f   """
         m = re.search(r"\s([rf])\s*$", line.strip(), re.IGNORECASE)
         return m.group(1).lower() if m else ""
 
     def _inferPointType(self, point_name: str) -> str:
-        """根据 point 名称推断类型：net / output_pin / input_pin。"""
+        """    point            et / output_pin / input_pin """
         if not point_name or "(net)" in point_name:
             return "net"
         m = re.search(r"/([A-Za-z0-9_\[\]]+)\s*\(?[A-Z]?", point_name)
@@ -403,3 +387,11 @@ class Format1Parser(TimeParser):
         if pin in self._output_pin_names:
             return "output_pin"
         return "input_pin"
+
+
+
+
+
+
+
+

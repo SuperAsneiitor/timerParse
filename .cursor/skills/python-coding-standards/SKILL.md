@@ -19,8 +19,8 @@ description: Defines Python coding standards for timerParse (layering, Chinese c
 ### 边界划分
 
 - **生成链路**：配置/模板 (YAML) → 生成器 (`lib/report_gen/`) → 报告文本 (.rpt)。生成器只负责根据配置输出文本，不读报告、不写 CSV。
-- **解析链路**：报告文本 (.rpt) → 解析器 (`lib/parsers/`) → 结构化数据（内存中的 list/dict）。解析器只做解析与归一化，不写文件。
-- **抽取与对比**：`lib/extract.py` 负责调用解析器、编排多 path、写 CSV；`lib/compare.py` 负责读 CSV、对比、写对比结果与统计。I/O 与流程编排集中在 extract/compare，parser 保持无副作用。
+- **解析链路**：报告文本 (.rpt) → 解析器 (`lib/parser_V2/`，含 TimeParser 与可选 YAML 布局）→ 结构化数据。解析器只做解析与归一化，不写文件。
+- **抽取与对比**：`lib/extract.py`（及可选 `lib/parser_chaos/` 多进程）调用解析器、写 CSV；`lib/compare_path_summary.py` 与 `lib/compare/` 负责对比与报告。编排层保持 I/O，解析层无副作用。
 - **入口**：CLI (`lib/cli.py`、`lib/__main__.py`) 和脚本（如 `scripts/run_validation_flow.py`）保持“薄”，只做参数解析与调用 lib，业务逻辑全部在 lib 内。
 
 ### 数据流示意
@@ -34,7 +34,7 @@ flowchart LR
     Config --> Gen --> Rpt
   end
   subgraph parse [解析与抽取]
-    Parser[lib/parsers]
+    Parser[lib/parser_V2]
     Extract[lib/extract]
     CSV[launch_path.csv, path_summary.csv, ...]
     Rpt --> Parser --> Extract --> CSV
@@ -70,7 +70,7 @@ flowchart LR
 ## 可读性与复用
 
 - **步骤可见**：解析/生成流程用一系列小函数 + 清晰命名表达，避免单一大函数内嵌套过深。
-- **职责单一文件**：单文件内避免堆积多种无关职责；格式差异（如 format1 / format2 / pt）放在子类或策略模块中，公共逻辑放在基类或 `lib/` 下的公共模块（如 `time_parser_base`、`report_gen/base`）。
+- **职责单一文件**：单文件内避免堆积多种无关职责；格式差异（如 format1 / format2 / pt）放在子类或策略模块中，公共逻辑放在基类或 `lib/` 下的公共模块（如 `parser_V2/time_parser_base.py`、`report_gen/base.py`）。
 - **复用**：可复用逻辑放在 `lib/` 公共模块或基类；各格式特有的正则、列名、表头格式在对应 parser/generator 子类中实现，通过继承或组合调用基类方法。
 
 ## 与现有代码的关系

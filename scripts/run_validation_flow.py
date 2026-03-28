@@ -32,8 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("-j", "--jobs", type=int, default=4, help="extract 并行 worker 数（默认：4）")
     parser.add_argument("--seed-format1", type=int, default=101, help="format1 生成随机种子（默认：101）")
-    parser.add_argument("--seed-format2", type=int, default=202, help="format2 生成随机种子（默认：202）")
-    parser.add_argument("--seed-pt", type=int, default=303, help="pt 生成随机种子（默认：303）")
+    parser.add_argument("--seed-format2", type=int, default=101, help="format2 生成随机种子（默认：101，与 format1 同源）")
+    parser.add_argument("--seed-pt", type=int, default=101, help="pt 生成随机种子（默认：101，与 format1 同源）")
     parser.add_argument(
         "-o",
         "--output-base",
@@ -58,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         base = _repo / "test_results" / f"validation_flow_{ts}"
 
     reports = base / "reports"
+    manifest = reports / "path_manifest.json"
     ex1 = base / "extract_format1"
     ex2 = base / "extract_format2"
     expt = base / "extract_pt"
@@ -76,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
             str(args.seed_format1),
             "-o",
             str(reports / "gen_format1.rpt"),
+            "--path-manifest-out",
+            str(manifest),
             "--log-level",
             args.log_level,
         ],
@@ -93,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
             str(args.seed_format2),
             "-o",
             str(reports / "gen_format2.rpt"),
+            "--path-manifest-in",
+            str(manifest),
             "--log-level",
             args.log_level,
         ],
@@ -110,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
             str(args.seed_pt),
             "-o",
             str(reports / "gen_pt.rpt"),
+            "--path-manifest-in",
+            str(manifest),
             "--log-level",
             args.log_level,
         ],
@@ -299,6 +306,37 @@ def main(argv: list[str] | None = None) -> int:
             str(expt / "capture_path.csv"),
             "--test-capture-csv",
             str(ex1 / "capture_path.csv"),
+            "--no-charts",
+            "--log-level",
+            args.log_level,
+        ],
+        _repo,
+    )
+
+    detail_f2 = cmpd / "detail_pt_vs_format2"
+    detail_f2.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            sys.executable,
+            "-m",
+            "lib",
+            "compare",
+            "-g",
+            str(expt / "path_summary.csv"),
+            "-t",
+            str(ex2 / "path_summary.csv"),
+            "-o",
+            str(detail_f2 / "compare.csv"),
+            "--stats-json",
+            str(detail_f2 / "compare_stats.json"),
+            "--golden-launch-csv",
+            str(expt / "launch_path.csv"),
+            "--test-launch-csv",
+            str(ex2 / "launch_path.csv"),
+            "--golden-capture-csv",
+            str(expt / "capture_path.csv"),
+            "--test-capture-csv",
+            str(ex2 / "capture_path.csv"),
             "--no-charts",
             "--log-level",
             args.log_level,

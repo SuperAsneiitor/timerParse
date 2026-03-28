@@ -22,6 +22,22 @@ def _fmt_plain(v):
     return str(v)
 
 
+def _fmt_summary_num(v):
+    """路径列表中的差异数值统一显示为 4 位小数；非数值保持原样。"""
+    if v is None:
+        return ""
+    s = str(v).strip()
+    if not s:
+        return ""
+    x = _to_float(s)
+    if x is None:
+        return s
+    # 纯整数（例如 point_count_diff）保持整数展示
+    if "." not in s and "%" not in s:
+        return s
+    return f"{x:.4f}"
+
+
 def _fmt_metric_value(metric: str, v):
     """slack_diff 用普通数值；其余沿用百分比显示。"""
     if metric == "slack_diff":
@@ -190,6 +206,16 @@ def generate_html_report(
     });
   }
 
+  function fmtSummaryNum(v){
+    if(v === null || v === undefined) return "";
+    const s = String(v).trim();
+    if(!s) return "";
+    const x = parseNum(s);
+    if(!Number.isFinite(x)) return s;
+    if(!s.includes(".") && !s.includes("%")) return s;
+    return x.toFixed(4);
+  }
+
   function getSortBy(){
     return localStorage.getItem(STORE_KEY_BY) || DEFAULT_SORT_BY;
   }
@@ -231,11 +257,11 @@ def generate_html_report(
         + "<td>" + pidCell + "</td>"
         + "<td>" + escapeHtml(row.startpoint || "") + "</td>"
         + "<td>" + escapeHtml(row.endpoint || "") + "</td>"
-        + "<td>" + escapeHtml(row.slack_diff || "") + "</td>"
-        + "<td>" + escapeHtml(row.data_path_delay_diff || "") + "</td>"
-        + "<td>" + escapeHtml(row.launch_clock_delay_diff || "") + "</td>"
-        + "<td>" + escapeHtml(row.clock_uncertainty_diff || "") + "</td>"
-        + "<td>" + escapeHtml(row.clock_reconvergence_pessimism_diff || "") + "</td>"
+        + "<td>" + escapeHtml(fmtSummaryNum(row.slack_diff)) + "</td>"
+        + "<td>" + escapeHtml(fmtSummaryNum(row.data_path_delay_diff)) + "</td>"
+        + "<td>" + escapeHtml(fmtSummaryNum(row.launch_clock_delay_diff)) + "</td>"
+        + "<td>" + escapeHtml(fmtSummaryNum(row.clock_uncertainty_diff)) + "</td>"
+        + "<td>" + escapeHtml(fmtSummaryNum(row.clock_reconvergence_pessimism_diff)) + "</td>"
         + "<td>" + escapeHtml(row.data_path_point_count_diff || "") + "</td>"
         + "<td>" + escapeHtml(row.launch_clock_point_count_diff || "") + "</td>"
         + "<td>" + escapeHtml(row.capture_point_count_diff || "") + "</td>"
@@ -412,11 +438,11 @@ def generate_html_report(
                 f"<td>{pid_cell}</td>"
                 f"<td>{html_module.escape(_fmt_plain(row.get('startpoint')))}</td>"
                 f"<td>{html_module.escape(_fmt_plain(row.get('endpoint')))}</td>"
-                f"<td>{html_module.escape(_fmt_plain(row.get('slack_diff')))}</td>"
-                f"<td>{html_module.escape(_fmt_plain(row.get('data_path_delay_diff')))}</td>"
-                f"<td>{html_module.escape(_fmt_plain(row.get('launch_clock_delay_diff')))}</td>"
-                f"<td>{html_module.escape(_fmt_plain(row.get('clock_uncertainty_diff')))}</td>"
-                f"<td>{html_module.escape(_fmt_plain(row.get('clock_reconvergence_pessimism_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_summary_num(row.get('slack_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_summary_num(row.get('data_path_delay_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_summary_num(row.get('launch_clock_delay_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_summary_num(row.get('clock_uncertainty_diff')))}</td>"
+                f"<td>{html_module.escape(_fmt_summary_num(row.get('clock_reconvergence_pessimism_diff')))}</td>"
                 f"<td>{html_module.escape(_fmt_plain(row.get('data_path_point_count_diff')))}</td>"
                 f"<td>{html_module.escape(_fmt_plain(row.get('launch_clock_point_count_diff')))}</td>"
                 f"<td>{html_module.escape(_fmt_plain(row.get('capture_point_count_diff')))}</td>"

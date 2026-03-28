@@ -1,5 +1,16 @@
 # Release Notes
 
+## [Unreleased] - 文档与架构同步（2026-03-28）
+
+### 概要
+- **解析**：统一在 **`lib/parser_V2`**（`TimeParser` 子类 + `create_timing_report_parser`）；删除 **`lib/parsers/`** 及根目录 `lib/format1_parser.py` 等薄转发。
+- **extract-chaos**：Worker 使用与 **`extract`** 相同的 **parser_V2**；移除 chaos 内重复的 `parser_format*.py` / `utils.py`；CSV 列与 `path_summary` 与 **`TimeParser.summary_columns`** 对齐。
+- **实验包**：删除 **`lib/parser_chaos_V2/`** 及 `tests/test_parser_chaos_v2.py`。
+- **文档**：重建 **`README.md`**（UTF-8 简体中文）；新增 **`docs/ARCHITECTURE.md`**；更新 **`docs/parser_chaos.md`**、**`PARSE_LAYOUTS.md`**、**`README_legacy.md`**、**`SESSION_MIGRATION.md`**、**`FORMAT_VALIDATION.md`**、**`PT_REPORT_REUSE_TEMPLATE.md`**。
+- **格式2**：net 行 Cap 后单位 **`xf`** 与 **`xd`** 同样从描述中剥离（与 extract/chaos 行为一致）。
+
+---
+
 ## [1.0.0] - 2026-03-19
 
 ### 更新时间

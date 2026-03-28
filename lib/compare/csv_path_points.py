@@ -17,7 +17,17 @@ def loadSegmentCsvByPathId(csv_path: Path) -> Dict[str, List[dict]]:
             pid = (row.get("path_id") or "").strip()
             if not pid:
                 continue
-            by_pid[pid].append(row)
+            by_pid[pid].append(_normalizePointMetrics(row))
     for pid in by_pid:
         by_pid[pid].sort(key=lambda r: int((r.get("point_index") or "0").strip() or 0))
     return dict(by_pid)
+
+
+def _normalizePointMetrics(row: dict) -> dict:
+    """统一跨格式同义列，避免 compare 明细把同一语义拆成两列。"""
+    out = dict(row)
+    step_delay = (out.get("StepDelay") or out.get("Incr") or out.get("Delay") or "").strip()
+    path_time = (out.get("PathTime") or out.get("Path") or out.get("Time") or "").strip()
+    out["StepDelay"] = step_delay
+    out["PathTime"] = path_time
+    return out

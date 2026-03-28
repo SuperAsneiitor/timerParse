@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .base import TimingReportTemplate, ValueResolver, _str_value
@@ -7,6 +8,9 @@ from .base import TimingReportTemplate, ValueResolver, _str_value
 
 class Format2Report(TimingReportTemplate):
     format_name = "format2"
+
+    def float_decimals(self) -> int:
+        return 4
 
     def title_line(self, name: str, value: str) -> str:
         name_width = 24
@@ -48,6 +52,13 @@ class Format2Report(TimingReportTemplate):
         return False
 
     def render_row(self, plan, row_ctx: dict[str, Any], cumulative_targets: set[str], cumulative_sources: set[str]) -> str:
+        def _normalize_float_text(text: str) -> str:
+            return re.sub(
+                r"-?\d+\.\d+",
+                lambda m: f"{float(m.group(0)):.4f}",
+                text or "",
+            )
+
         # format2: pin/port 行在 Time 与 Description 之间使用上升/下降沿符号（/ 或 \）
         rt = str(row_ctx.get("row_type", "")).strip().lower()
         point = str(row_ctx.get("point", "") or "").strip()
@@ -77,12 +88,8 @@ class Format2Report(TimingReportTemplate):
                 spec = cfg.get("value") or cfg.get("spec") or {}
                 val = ValueResolver.resolve_value(spec, {**row_ctx, "row": row_ctx, "path": row_ctx.get("path") or {}})
 
-            text = _str_value(val)
-            # net 行在 Cap 后补充 "xd" 关键字，与真实 format2 报告保持一致
-            if col == "Cap":
-                rt = str(row_ctx.get("row_type", "")).strip().lower()
-                if rt == "net" and text:
-                    text = f"{text} xd"
+            text = _normalize_float_text(_str_value(val, self.float_decimals()))
+            # 不在代码里硬编码单位；Cap 保持纯数值，单位变更通过配置/词法层处理。
             if col == "x-coord" and text:
                 text = "{  " + text
             elif col == "y-coord" and text:

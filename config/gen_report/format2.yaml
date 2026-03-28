@@ -2,18 +2,20 @@ extends: base.yaml
 format: format2
 
 variables:
-  clock: { type: fixed, value: "pll_cpu_clk" }
-  prefix: { type: format, template: "x_top/path_{path_id}" }
+  clock: { type: fixed, value: "CORECLK" }
+  prefix: { type: format, template: "x_ct_top_0/path_{path_id}" }
 
 point_generator:
   clock_net_delay: { template: "clock source latency" }
+  net: { template: "{prefix}/n{net_index} (net)" }
+  endpoint: { template: "{endpoint_capture_ck}" }
   required_path: { template: "data required time" }
 
 title:
   attributes:
     - { name: Scenario, value: { type: fixed, value: "func_WorstLT_cworst_CCworst_T" } }
-    - { name: Path Start, value: { type: format, template: "{startpoint} ( flip-flop, falling edge-triggered,  CPU_CLK)" } }
-    - { name: Path End, value: { type: format, template: "{endpoint} ( flip-flop, falling edge-triggered,  CPU_CLK)" } }
+    - { name: Path Start, value: { type: format, template: "{startpoint} ( flip-flop, falling edge-triggered,  {clock})" } }
+    - { name: Path End, value: { type: format, template: "{endpoint} ( flip-flop, falling edge-triggered,  {clock})" } }
     - { name: Common Pin, value: { type: ref, ref: common_pin } }
     - { name: Group Name, value: { type: enum, choices: [REG2REG, REG2CGP] } }
     - { name: Analysis Type, value: { type: enum, choices: [min, max] } }
@@ -21,22 +23,20 @@ title:
 table:
   separator: "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"
   cumulative_rules: { Time: Delay }
-  column_order: [Type, Fanout, Cap, D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description]
+  column_order: [Type, Fanout, Cap, D-Trans, Trans, Derate, D-Delay, Delay, Time, Description]
   columns:
     Type: { value: { type: ref, ref: display_type } }
     Fanout: { value: { type: random_int, min: 1, max: 4 }, profiles: [net_rows] }
     Cap: { value: { type: random_float, min: 0.001, max: 0.01, decimals: 3 }, profiles: [net_rows] }
     "D-Trans": { value: { type: fixed, value: "-0.000" }, when_type: [input_pin] }
     Trans: { value: { type: random_float, min: 0.000, max: 0.020, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
-    Derate: { value: { type: fixed, value: "0.900,0.900" }, profiles: [pin_rows] }
-    "x-coord": { value: { type: random_float, min: 200, max: 600, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
-    "y-coord": { value: { type: random_float, min: 700, max: 1000, decimals: 3 }, when_type: [pin, input_pin, output_pin, port] }
+    Derate: { value: { type: fixed, value: "0.900" }, profiles: [pin_rows] }
     "D-Delay": { value: { type: fixed, value: "-0.000" }, when_type: [input_pin] }
     Delay: { value: { type: random_float, min: 0.000, max: 0.060, decimals: 3 }, when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, pin, input_pin, output_pin, port, constraint] }
     Time: { value: { type: fixed, value: "" } }
     Description:
       value: { type: ref, ref: description_text }
-      when_type: [pin, input_pin, output_pin, port, clock, clock_net_delay, clock_reconv, clock_uncertainty, net, constraint, required_path, required, arrival, slack]
+      when_type: [pin, input_pin, output_pin, port, clock, clock_net_delay, clock_reconv, clock_uncertainty, net, endpoint, constraint, required_path, required, arrival, slack]
 
 structure:
   launch:
@@ -53,6 +53,7 @@ structure:
     - { type: port, count: 1 }
     - { type: net, count: 1 }
     - { group: [input_pin, output_pin, net], repeat: { type: ref, ref: capture_clock_groups } }
+    - { type: endpoint, count: 1 }
     - { type: constraint, count: 1 }
     - { type: clock_reconv, count: 1 }
     - { type: clock_uncertainty, count: 1 }

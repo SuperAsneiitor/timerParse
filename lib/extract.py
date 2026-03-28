@@ -11,9 +11,9 @@ import csv
 import os
 from pathlib import Path
 
-from . import createParser, detectReportFormat
 from . import log_util
-from .parsers.time_parser_base import ParseOutput, TimeParser
+from .parser_V2.engine import create_timing_report_parser, detect_report_format
+from .parser_V2.time_parser_base import ParseOutput, TimeParser
 
 # 抽取结果中保留的语义列（与格式无关的统一列集合）
 SEMANTIC_POINT_ATTRS = [
@@ -246,7 +246,7 @@ def runExtract(args) -> int:
     执行 extract 子命令：解析 timing 报告并写出 CSV。
 
     args 需包含 input_rpt, output_dir, format, jobs。
-    若 format 为 auto，则根据报告内容 detectReportFormat；否则使用指定格式创建解析器。
+    若 format 为 auto，则根据报告内容 detect_report_format；否则使用指定格式创建解析器。
     """
     rpt_path = os.path.abspath(args.input_rpt)
     out_dir = os.path.abspath(args.output_dir)
@@ -257,12 +257,12 @@ def runExtract(args) -> int:
     format_key = args.format
     if format_key == "auto":
         with open(rpt_path, "r", encoding="utf-8", errors="replace") as f:
-            format_key = detectReportFormat(f.read())
+            format_key = detect_report_format(f.read())
         log_util.brief(f"Format: {format_key} (auto-detected)")
     else:
         log_util.brief(f"Format: {format_key}")
 
-    parser_impl = createParser(format_key)
+    parser_impl = create_timing_report_parser(format_key)
     paths_per_shard = int(getattr(args, "paths_per_shard", 0) or 0)
     merge_launch = bool(getattr(args, "merge_launch", False))
     if paths_per_shard > 0:

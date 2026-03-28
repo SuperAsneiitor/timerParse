@@ -23,7 +23,9 @@ def _ensure_subcommand(argv: list[str] | None) -> list[str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Timing 报告解析与后处理：解析报告、生成 PT TCL、对比 path_summary。"
+        description=(
+            "Timing 报告工具链：extract（parser_V2 解析）→ gen-pt / compare / gen-report。"
+        )
     )
     subparsers = parser.add_subparsers(dest="command", help="子命令")
     parent = argparse.ArgumentParser(add_help=False)
@@ -35,20 +37,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="日志等级：brief=每步一行汇总；full=多行展开（默认：brief）",
     )
 
-    # extract
-    ext = subparsers.add_parser("extract", help="解析 Timing 报告，输出多 CSV", parents=[parent])
-    ext.add_argument("input_rpt", help="输入 timing report 文件路径")
-    ext.add_argument("-o", "--output-dir", default="output_lib", help="输出目录（默认: output_lib）")
+    # extract：主入口，解析实现统一在 lib.parser_V2
+    ext = subparsers.add_parser(
+        "extract",
+        parents=[parent],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="从 Timing 报告抽取 CSV（parser_V2，供 gen-pt / compare 使用）",
+        description=(
+            "读取一份 Timing 文本报告，写出与下游工具约定好的 CSV 集合。\n\n"
+            "默认输出目录下文件：\n"
+            "  launch_path.csv, capture_path.csv, path_summary.csv,\n"
+            "  launch_clock_path.csv, data_path.csv\n\n"
+            "示例：\n"
+            "  python -m lib extract report.rpt -o ./out\n"
+            "  python -m lib extract huge.rpt -f format2 -j 8\n"
+            "  python -m lib report.rpt -o ./out\n"
+            "      （省略子命令时等价于 extract）"
+        ),
+    )
+    ext.add_argument("input_rpt", metavar="REPORT", help="Timing 报告文件路径")
+    ext.add_argument(
+        "-o",
+        "--output-dir",
+        default="output_lib",
+        metavar="DIR",
+        help="CSV 输出目录（默认: output_lib）",
+    )
     ext.add_argument(
         "-f",
         "--format",
         choices=["auto", "format1", "format2", "pt", "apr"],
         default="auto",
-        help="报告格式，默认 auto 自动识别",
+        metavar="FMT",
+        help=(
+            "报告版式：auto 按内容猜测；format1 与 apr 为同义（APR 点表）；"
+            "format2 为 Path Start / Type 表；pt 为 PrimeTime 风格"
+        ),
     )
     ext.add_argument(
-        "-j", "--jobs", type=int, default=1, metavar="N",
-        help="并行 worker 数，默认 1",
+        "-j",
+        "--jobs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="并行解析进程数（path 很多时生效；默认 1 单进程）",
     )
     ext.add_argument(
         "-p",
@@ -56,17 +88,21 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         metavar="N",
-        help="按 path 数拆分输出文件：每 N 条 path 生成一组 *_partK.csv（0=不拆分，默认）",
+        help="分片：每 N 条 path 写一组 *_partK.csv；0 表示单文件（默认）",
     )
     ext.add_argument(
         "-m",
         "--merge-launch",
         action="store_true",
-        help="当启用分片输出时，额外合并生成 launch_path.csv（默认不生成）",
+        help="分片模式下额外合并生成 launch_path.csv",
     )
 
-    # extract-chaos
-    exC = subparsers.add_parser("extract-chaos", help="parser_chaos：分割器+多 worker 队列解析", parents=[parent])
+    # extract-chaos：与 extract 相同解析器（parser_V2），多进程队列吞吐更高
+    exC = subparsers.add_parser(
+        "extract-chaos",
+        help="多进程抽取：1 分割器 + N Worker，解析与 extract 一致（parser_V2）",
+        parents=[parent],
+    )
     exC.add_argument("input_rpt", help="输入 timing 报告文件路径")
     exC.add_argument("-o", "--output-dir", default="output_parser_chaos", help="输出目录（默认：output_parser_chaos）")
     exC.add_argument(
@@ -225,6 +261,8 @@ def build_parser() -> argparse.ArgumentParser:
     gr.add_argument("config", help="YAML 配置文件路径")
     gr.add_argument("-o", "--output", default=None, help="输出报告文件路径（默认按 format 写到 output/gen_<format>_timing_report.rpt）")
     gr.add_argument("-s", "--seed", type=int, default=None, metavar="N", help="随机种子（可复现）")
+    gr.add_argument("--path-manifest-in", dest="path_manifest_in", default="", help="可选：输入 path manifest（JSON/YAML），按同源点序列生成")
+    gr.add_argument("--path-manifest-out", dest="path_manifest_out", default="", help="可选：输出本次生成使用的 path manifest（JSON）")
 
     return parser
 

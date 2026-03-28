@@ -10,7 +10,7 @@ import unittest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.format2_parser import (
+from lib.parser_V2.format2_parser import (
     Format2Parser,
     _desc_to_point,
     _tail_n_numeric_and_desc,
@@ -27,6 +27,8 @@ def _test_split_derate_xy():
     assert y == "772.737", y
     derate_clean2, x2, y2 = p._split_derate_and_xy("0.900,0.900")
     assert derate_clean2 == "0.900,0.900" and x2 == "" and y2 == "", (derate_clean2, x2, y2)
+    derate_clean3, x3, y3 = p._split_derate_and_xy("0.900")
+    assert derate_clean3 == "0.900" and x3 == "" and y3 == "", (derate_clean3, x3, y3)
 
 
 # 最小 format2 报告片段：单条 path，含 clock/port/net/pin/arrival/required/slack
@@ -133,6 +135,25 @@ class TestFormat2Helpers(unittest.TestCase):
         """Derate 列与坐标连写（如 1.100,1.100{219.156,772.737}）时拆成 Derate 与 x、y。"""
         _test_split_derate_xy()
 
+    def test_extract_pin_metrics_accept_single_derate(self):
+        """pin 行 Derate 为单值（如 0.900）时，应能正确解析到 Derate 字段。"""
+        p = Format2Parser()
+        prefix = (
+            "pin -0.000 0.000 0.900 { 219.156 772.737 } "
+            "-0.000 0.033 0.034"
+        )
+        trans, derate, x_val, y_val, d_delay, delay, time = p._extractPinMetrics(
+            prefix,
+            is_output=False,
+        )
+        self.assertEqual(derate, "0.900")
+        self.assertEqual(x_val, "219.156")
+        self.assertEqual(y_val, "772.737")
+        self.assertEqual(trans, "0.000")
+        self.assertEqual(d_delay, "-0.000")
+        self.assertEqual(delay, "0.033")
+        self.assertEqual(time, "0.034")
+
 
 class TestFormat2ParserOutput(unittest.TestCase):
     """Format2 解析结果检查：y-coord、Type 属性、path_summary。"""
@@ -150,6 +171,16 @@ class TestFormat2ParserOutput(unittest.TestCase):
             self.assertGreater(len(out.summary_rows), 0, "应有至少一条 path summary")
             self.assertGreater(len(out.launch_rows), 0, "应有 launch 路径点")
             self.assertGreater(len(out.capture_rows), 0, "应有 capture 路径点")
+            pin_rows = [
+                r for r in out.launch_rows + out.capture_rows
+                if (r.get("Type") or "").strip().lower() in ("pin", "input_pin", "output_pin")
+            ]
+            self.assertGreater(len(pin_rows), 0, "最小报告应有 pin 行")
+            derates = [(r.get("Derate") or "").strip() for r in pin_rows]
+            self.assertTrue(
+                any(v == "0.900" or v == "0.900,0.900" for v in derates),
+                "pin 行应解析出 Derate（单值或双值）",
+            )
         finally:
             os.unlink(path)
 

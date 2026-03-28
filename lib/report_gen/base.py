@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import random
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,9 +25,9 @@ def _to_float(v: Any) -> float:
         return 0.0
 
 
-def _str_value(v: Any) -> str:
+def _str_value(v: Any, decimals: int = 3) -> str:
     if isinstance(v, float):
-        return f"{v:.3f}" if abs(v) < 1e6 else str(v)
+        return f"{v:.{decimals}f}" if abs(v) < 1e6 else str(v)
     return "" if v is None else str(v)
 
 
@@ -69,7 +71,7 @@ class ValueResolver:
             x_hi = float(spec.get("x_max", 100))
             y_lo = float(spec.get("y_min", 0))
             y_hi = float(spec.get("y_max", 100))
-            decimals = int(spec.get("decimals", 2))
+            decimals = int(spec.get("decimals", 4))
             x = round(random.uniform(x_lo, x_hi), decimals)
             y = round(random.uniform(y_lo, y_hi), decimals)
             return f"({x:.{decimals}f}, {y:.{decimals}f})"
@@ -124,6 +126,7 @@ class TimingReportTemplate:
     """模板基类：提供公共生成流程；子类覆盖少量格式差异（title 行格式、默认累加规则等）。"""
 
     format_name: str = "unknown"
+    last_manifest: dict[str, Any] | None = None
 
     def load_config(self, yaml_path: str) -> dict:
         if yaml is None:
@@ -160,6 +163,10 @@ class TimingReportTemplate:
     def default_cumulative_rules(self) -> dict[str, str]:
         # 子类覆盖
         return {}
+
+    def float_decimals(self) -> int:
+        """数值文本输出精度（默认 3 位小数，子类可覆盖）。"""
+        return 3
 
     def separator_after_launch(self) -> bool:
         return True
@@ -321,6 +328,13 @@ class TimingReportTemplate:
         ctx["startpoint_title"] = _strip_cell_suffix(str(ctx.get("startpoint", "")))
         ctx["endpoint_title"] = _strip_cell_suffix(str(ctx.get("endpoint", "")))
         ctx["common_pin_title"] = _strip_cell_suffix(str(ctx.get("common_pin", "")))
+        # 约定：capture endpoint 使用 endpoint 实例上的 CK 端（如 .../u11/D -> .../u11/CK）
+        endpoint_base = _strip_cell_suffix(str(ctx.get("endpoint", "")))
+        if "/" in endpoint_base:
+            inst = endpoint_base.rsplit("/", 1)[0]
+            ctx["endpoint_capture_ck"] = f"{inst}/CK"
+        else:
+            ctx["endpoint_capture_ck"] = endpoint_base
         # capture 段在已知 common_pin 等上下文后再生成，便于使用 {common_pin} 等占位符
         capture_points = self._generate_segment_points(capture_rows, "capture", ctx, point_gen) if point_gen else []
         ctx["capture_points"] = capture_points
@@ -334,13 +348,67 @@ class TimingReportTemplate:
         ctx["path"] = ctx
         return ctx
 
+    def _trimSegmentAfterEndpointPin(self, rows: list[dict]) -> list[dict]:
+        """
+        段内拓扑收敛：最后一个 input_pin 之后不再继续生成 pin/net。
+        这样可保证 endpoint(或 endpoint 的 CP 端)之后不再出现新的 pin/net。
+        """
+        if not rows:
+            return rows
+        input_indices = [
+            i for i, r in enumerate(rows) if str((r or {}).get("type", "")).strip().lower() == "input_pin"
+        ]
+        if not input_indices:
+            return rows
+        last_input_idx = input_indices[-1]
+        pin_net_types = {"pin", "input_pin", "output_pin", "net"}
+        trimmed: list[dict] = []
+        for idx, row in enumerate(rows):
+            rt = str((row or {}).get("type", "")).strip().lower()
+            if idx > last_input_idx and rt in pin_net_types:
+                continue
+            trimmed.append(row)
+        return trimmed
+
+    @staticmethod
+    def _manifestTypeKey(row_type: str) -> str:
+        rt = (row_type or "").strip().lower()
+        if rt in ("pin", "input_pin", "output_pin"):
+            return "pin"
+        return rt
+
+    def _collectSegmentManifest(self, rows: list[dict], points: list[str]) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = defaultdict(list)
+        for i, row in enumerate(rows):
+            rt = self._manifestTypeKey(str(row.get("type") or ""))
+            p = points[i] if i < len(points) else ""
+            out[rt].append(p)
+        return dict(out)
+
+    def _applyManifestToSegment(self, rows: list[dict], points: list[str], segment_manifest: dict[str, list[str]]) -> list[str]:
+        if not segment_manifest:
+            return points
+        out = list(points)
+        pos: dict[str, int] = defaultdict(int)
+        for i, row in enumerate(rows):
+            rt = self._manifestTypeKey(str(row.get("type") or ""))
+            seq = segment_manifest.get(rt) or []
+            idx = pos[rt]
+            if idx < len(seq):
+                if i < len(out):
+                    out[i] = seq[idx]
+                else:
+                    out.append(seq[idx])
+            pos[rt] = idx + 1
+        return out
+
     def render_title_block(self, title_config: list[dict], path_ctx: dict[str, Any]) -> str:
         lines: list[str] = []
         for attr in title_config:
             name = attr.get("name") or ""
             spec = attr.get("value") or {}
             val = ValueResolver.resolve_value(spec, {**path_ctx, "path": path_ctx})
-            lines.append(self.title_line(str(name), _str_value(val)))
+            lines.append(self.title_line(str(name), _str_value(val, self.float_decimals())))
         return "\n".join(lines) + "\n"
 
     def render_row(self, plan: RenderPlan, row_ctx: dict[str, Any], cumulative_targets: set[str], cumulative_sources: set[str]) -> str:
@@ -353,14 +421,14 @@ class TimingReportTemplate:
                 cells.append("")
                 continue
             if col in cumulative_targets and col in row_ctx:
-                cells.append(_str_value(row_ctx[col]))
+                cells.append(_str_value(row_ctx[col], self.float_decimals()))
                 continue
             if col in cumulative_sources and col in row_ctx:
-                cells.append(_str_value(row_ctx[col]))
+                cells.append(_str_value(row_ctx[col], self.float_decimals()))
                 continue
             spec = cfg.get("value") or cfg.get("spec") or {}
             val = ValueResolver.resolve_value(spec, {**row_ctx, "row": row_ctx, "path": row_ctx.get("path") or {}})
-            cells.append(_str_value(val))
+            cells.append(_str_value(val, self.float_decimals()))
         # fixed width
         parts = []
         for i, col in enumerate(plan.column_order):
@@ -368,12 +436,19 @@ class TimingReportTemplate:
             parts.append((cells[i] if i < len(cells) else "").ljust(w)[:w])
         return "".join(parts).rstrip()
 
-    def generate(self, config: dict, output_path: str, seed: int | None = None) -> None:
+    def generate(
+        self,
+        config: dict,
+        output_path: str,
+        seed: int | None = None,
+        manifest_in: dict[str, Any] | None = None,
+    ) -> None:
         plan = self.build_render_plan(config)
         title_config = config.get("title", {}).get("attributes") or []
         num_paths = int(config.get("num_paths", 1))
         cumulative_targets = set(plan.cumulative_rules.keys())
         cumulative_sources = set(plan.cumulative_rules.values())
+        manifest_out: dict[str, Any] = {"paths": []}
 
         lines: list[str] = []
         for path_idx in range(num_paths):
@@ -383,11 +458,43 @@ class TimingReportTemplate:
             for k, spec in (config.get("path_vars") or {}).items():
                 template_ctx[k] = ValueResolver.resolve_value(spec, template_ctx)
 
-            launch_rows = self._expand_rows(plan.row_templates, template_ctx)
+            launch_rows = self._trimSegmentAfterEndpointPin(self._expand_rows(plan.row_templates, template_ctx))
             capture_rows = self._expand_rows(plan.capture_templates, template_ctx) if plan.capture_templates else []
             path_ctx = self._build_path_ctx(config, path_idx, (seed + path_idx) if seed is not None else None, launch_rows, capture_rows)
-            launch_pts = path_ctx.get("launch_points") or []
-            capture_pts = path_ctx.get("capture_points") or []
+            launch_pts = list(path_ctx.get("launch_points") or [])
+            capture_pts = list(path_ctx.get("capture_points") or [])
+
+            # 使用外部 path manifest 时，按 row_type 序列覆盖 point，保证跨格式同源路径。
+            path_manifest = None
+            if manifest_in:
+                paths = manifest_in.get("paths") or []
+                if path_idx < len(paths):
+                    path_manifest = paths[path_idx] or {}
+            if path_manifest:
+                launch_pts = self._applyManifestToSegment(launch_rows, launch_pts, path_manifest.get("launch", {}) or {})
+                capture_pts = self._applyManifestToSegment(capture_rows, capture_pts, path_manifest.get("capture", {}) or {})
+                path_ctx["launch_points"] = launch_pts
+                path_ctx["capture_points"] = capture_pts
+                if launch_pts:
+                    pin_like = {"pin", "input_pin", "output_pin"}
+                    pin_indices = [i for i, r in enumerate(launch_rows) if (r.get("type") or "").strip().lower() in pin_like]
+                    if pin_indices:
+                        path_ctx["startpoint"] = launch_pts[pin_indices[0]]
+                        path_ctx["endpoint"] = launch_pts[pin_indices[-1]]
+                        path_ctx["common_pin"] = launch_pts[pin_indices[0]]
+                        path_ctx["startpoint_title"] = _strip_cell_suffix(str(path_ctx["startpoint"]))
+                        path_ctx["endpoint_title"] = _strip_cell_suffix(str(path_ctx["endpoint"]))
+                        path_ctx["common_pin_title"] = _strip_cell_suffix(str(path_ctx["common_pin"]))
+
+            manifest_out["paths"].append(
+                {
+                    "path_id": path_idx + 1,
+                    "startpoint": path_ctx.get("startpoint", ""),
+                    "endpoint": path_ctx.get("endpoint", ""),
+                    "launch": self._collectSegmentManifest(launch_rows, launch_pts),
+                    "capture": self._collectSegmentManifest(capture_rows, capture_pts),
+                }
+            )
 
             lines.append(self.render_title_block(title_config, path_ctx))
             lines.append("")
@@ -435,7 +542,7 @@ class TimingReportTemplate:
                     if str(row_type).strip().lower() == "clock_uncertainty":
                         incr_val = -abs(_to_float(incr_val))
                     running[target] += _to_float(incr_val)
-                    row_ctx[target] = round(running[target], 3)
+                    row_ctx[target] = round(running[target], self.float_decimals())
                     row_ctx[source] = incr_val
                 line = self.render_row(plan, row_ctx, cumulative_targets, cumulative_sources)
                 if line.strip():
@@ -485,18 +592,21 @@ class TimingReportTemplate:
                     if str(row_type).strip().lower() == "clock_uncertainty":
                         incr_val = -abs(_to_float(incr_val))
                     running[target] += _to_float(incr_val)
-                    row_ctx[target] = round(running[target], 3)
+                    row_ctx[target] = round(running[target], self.float_decimals())
                     row_ctx[source] = incr_val
                 rt_norm = str(row_type).strip().lower()
                 for target in plan.cumulative_rules.keys():
                     if rt_norm == "required":
-                        row_ctx[target] = round(running.get(target, 0.0), 3)
+                        row_ctx[target] = round(running.get(target, 0.0), self.float_decimals())
                     elif rt_norm == "required_path":
-                        row_ctx[target] = round(running.get(target, 0.0), 3)
+                        row_ctx[target] = round(running.get(target, 0.0), self.float_decimals())
                     elif rt_norm == "arrival":
-                        row_ctx[target] = round(-launch_totals.get(target, 0.0), 3)
+                        row_ctx[target] = round(-launch_totals.get(target, 0.0), self.float_decimals())
                     elif rt_norm == "slack":
-                        row_ctx[target] = round(running.get(target, 0.0) - launch_totals.get(target, 0.0), 3)
+                        row_ctx[target] = round(
+                            running.get(target, 0.0) - launch_totals.get(target, 0.0),
+                            self.float_decimals(),
+                        )
                 line = self.render_row(plan, row_ctx, cumulative_targets, cumulative_sources)
                 if line.strip():
                     lines.append(line)
@@ -510,4 +620,5 @@ class TimingReportTemplate:
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(lines), encoding="utf-8")
+        self.last_manifest = manifest_out
 

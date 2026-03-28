@@ -7,6 +7,7 @@
 # 说明：
 # - 本脚本默认将 tools/lake/bin 加入 PATH，并将 LAKE_PYTHON 固定在此处
 # - `lake` 可执行脚本会从当前目录向上定位 repo root，再转发到 `python -m lib`
+# - extract / extract-chaos 均使用 lib.parser_V2 解析器（见 docs/ARCHITECTURE.md）
 
 # 固定 Python 路径（请按实际环境修改为绝对路径更稳）
 setenv LAKE_PYTHON python

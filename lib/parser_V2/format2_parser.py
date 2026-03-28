@@ -1,9 +1,9 @@
 """
-Format2 Timing 报告解析器。
+Format2 Timing          ?
 
-列含 Type/Fanout/Cap/D-Trans/Trans/Derate/x-coord/y-coord/D-Delay/Delay/Time/Description；
-按 Path Start/Path End 分块，按 Type 与 Description 列解析 pin/net/clock/port 等行，
-并处理 Derate、坐标、slack、arrival/required 等语义。
+    Type/Fanout/Cap/D-Trans/Trans/Derate/x-coord/y-coord/D-Delay/Delay/Time/Description ?
+ ?Path Start/Path End        Type  ?Description     ?pin/net/clock/port     ?
+    ?Derate       lack  rrival/required       ?
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from .time_parser_base import TimeParser
+from .layout_runtime import LayoutRuntime
 
 
 def _descToPoint(desc: str) -> str:
@@ -72,6 +73,14 @@ _OUTPUT_PIN_NAMES = frozenset({"Q", "Z", "ZN", "ZP"})
 
 
 class Format2Parser(TimeParser):
+    """Format2 报告解析器。"""
+
+    def __init__(self, attrs_order: list[str] | None = None, attrs_by_type: dict[str, list[str]] | None = None) -> None:
+        super().__init__(attrs_order, attrs_by_type)
+        self._layout_runtime = LayoutRuntime("format2")
+        self._layout_hits = 0
+        self._layout_fallbacks = 0
+
     default_attrs_order = [
         "Type",
         "Fanout",
@@ -152,11 +161,11 @@ class Format2Parser(TimeParser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
-            # Last common pin（公共点概念）相关派生字段
+            # Last common pin                   ?
             "last_common_pin": "",
-            # common pin 处的累计延迟（format2 用 Time）
+            # common pin            ormat2  ?Time ?
             "common_pin_delay": "",
-            # capture 侧第一行 clock 的周期度量（format2 用 Delay）
+            # capture       ?clock          format2  ?Delay ?
             "clock_period": "",
             "uncertainty": "",
         }
@@ -180,7 +189,7 @@ class Format2Parser(TimeParser):
                 if vm:
                     meta["slack"] = vm.group(1).strip()
                 else:
-                    # 兜底：取该行最后一个数值
+                    #                   ?
                     nums = re.findall(r"-?\d+(?:\.\d+)?", line)
                     if nums:
                         meta["slack"] = nums[-1]
@@ -188,7 +197,7 @@ class Format2Parser(TimeParser):
                     meta["slack_status"] = sm.group(1).strip().upper()
                 break
 
-        # 兼容 Last common pin 行在 slack 之后才出现：全局扫描兜底
+        #     Last common pin     slack                   
         if not meta.get("last_common_pin"):
             for line in lines:
                 m_lcp = self._re_last_common_pin.search(line) or self._re_last_common_pin2.search(line)
@@ -262,8 +271,8 @@ class Format2Parser(TimeParser):
 
         self._fillUncertainty(lines, meta)
 
-        # 派生字段：last_common_pin/common_pin_delay/clock_period
-        # 约定：common_pin_delay = Time(common)；clock_period = capture 侧第一行 clock 的 Delay
+        #         ast_common_pin/common_pin_delay/clock_period
+        #      ommon_pin_delay = Time(common)  lock_period = capture       ?clock  ?Delay
         if not meta.get("last_common_pin"):
             meta["last_common_pin"] = meta.get("startpoint", "")
 
@@ -279,7 +288,7 @@ class Format2Parser(TimeParser):
         meta["common_pin_delay"] = _findCommonPinDelay(capture_rows) or _findCommonPinDelay(launch_rows) or ""
 
         clock_period = ""
-        # 优先取 Type=clock 的首行 Delay，其次取第一行 Delay
+        #     ?Type=clock     ?Delay          ?Delay
         for r in capture_rows:
             if (r.get("Type") or "").strip().lower() == "clock":
                 val = str(r.get("Delay", "") or "").strip()
@@ -334,7 +343,7 @@ class Format2Parser(TimeParser):
         if not content.strip() or "Description" not in col_pos:
             return "", {}, "other"
         raw = self._valuesByColumns(content, col_pos)
-        type_str = (raw.get("Type") or "").strip().lower()
+        type_str = self._layout_runtime.classifyPointType(content, type_hint=(raw.get("Type") or ""))
         if type_str == "pin":
             desc_col = content[col_pos["Description"] :].strip()
             pin_name = _pinNameFromDesc(desc_col)
@@ -345,6 +354,7 @@ class Format2Parser(TimeParser):
             "net": self._parseNet,
             "clock": self._parseClock,
             "port": self._parsePort,
+            "endpoint": self._parseEndpoint,
             "constraint": self._parseConstraint,
             "required": self._parseRequired,
             "arrival": self._parseArrival,
@@ -374,7 +384,7 @@ class Format2Parser(TimeParser):
         return derate_part, x, y
 
     # -----------------------------------------------------------------------
-    # Backward-compatible alias（旧测试/旧调用使用 snake_case）
+    # Backward-compatible alias      /       ?snake_case ?
     # -----------------------------------------------------------------------
     def _split_derate_and_xy(self, derate_cell: str) -> tuple[str, str, str]:
         return self._splitDerateAndXy(derate_cell)
@@ -412,9 +422,9 @@ class Format2Parser(TimeParser):
 
     def _extractPinMetrics(self, content: str, is_output: bool) -> tuple[str, str, str, str, str, str, str]:
         """
-        从完整 pin 行稳健提取:
+            ?pin        ?
         (trans, derate, x, y, d_delay, delay, time)
-        通过坐标块和数值顺序定位，避免把 x/y 坐标误当作 Delay/Time。
+                                ?x/y        ?Delay/Time ?
         """
         trans = ""
         derate = ""
@@ -430,6 +440,8 @@ class Format2Parser(TimeParser):
             x_val, y_val = coord_m.group(1), coord_m.group(2)
             prefix = content[: coord_m.start()] + content[coord_m.end() :]
 
+        # 兼容两种 Derate 形态：旧版 "1.100,1.100" 与新版单值 "0.900"
+        # 先匹配旧版双值 Derate（如 1.100,1.100），该形态不会被纯数字提取捕获
         derate_m = re.search(r"(\d+(?:\.\d+)?,\d+(?:\.\d+)?)\s*(?:\{|$)", content)
         if derate_m:
             derate = derate_m.group(1).strip()
@@ -438,24 +450,31 @@ class Format2Parser(TimeParser):
         nums = re.findall(r"-?\d+(?:\.\d+)?", prefix)
         if nums:
             if is_output:
-                # output_pin 典型数值顺序: Trans, Delay, Time
-                if len(nums) >= 3:
-                    trans, delay, time = nums[-3], nums[-2], nums[-1]
-                elif len(nums) == 2:
-                    delay, time = nums[-2], nums[-1]
-                elif len(nums) == 1:
-                    time = nums[-1]
-            else:
-                # input_pin 典型数值顺序: D-Trans, Trans, D-Delay, Delay, Time
-                if len(nums) >= 5:
+                # output_pin 的尾部时序数值稳定为 [Trans, (Derate), Delay, Time]
+                time = nums[-1]
+                if len(nums) >= 2:
+                    delay = nums[-2]
+                if not derate and len(nums) >= 3:
+                    derate = nums[-3]
+                if len(nums) >= 4:
                     trans = nums[-4]
-                    d_delay, delay, time = nums[-3], nums[-2], nums[-1]
-                elif len(nums) >= 3:
-                    delay, time = nums[-2], nums[-1]
-                elif len(nums) == 2:
-                    delay, time = nums[-2], nums[-1]
-                elif len(nums) == 1:
-                    time = nums[-1]
+                elif derate and len(nums) >= 3:
+                    # Derate 已被上面正则移除（双值场景）时，Trans 在 -3
+                    trans = nums[-3]
+            else:
+                # input_pin 的尾部时序数值稳定为 [Trans, (Derate), D-Delay, Delay, Time]
+                time = nums[-1]
+                if len(nums) >= 2:
+                    delay = nums[-2]
+                if len(nums) >= 3:
+                    d_delay = nums[-3]
+                if not derate and len(nums) >= 4:
+                    derate = nums[-4]
+                if len(nums) >= 5:
+                    trans = nums[-5]
+                elif derate and len(nums) >= 4:
+                    # Derate 已被上面正则移除（双值场景）时，Trans 在 -4
+                    trans = nums[-4]
 
         return trans, derate, x_val, y_val, d_delay, delay, time
 
@@ -521,7 +540,7 @@ class Format2Parser(TimeParser):
         if len(rest) >= 2:
             attrs["Cap"] = rest[1].split()[0]
         desc_start = 2
-        if len(rest) > 3 and rest[2].lower() == "xd":
+        if len(rest) > 3 and rest[2].lower() in ("xd", "xf"):
             desc_start = 3
         desc = " ".join(rest[desc_start:]) if len(rest) > desc_start else ""
         point = _descToPoint(desc)
@@ -531,12 +550,10 @@ class Format2Parser(TimeParser):
     def _parseClock(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        values, desc = _tailNNumericAndDesc(content, 2)
-        if len(values) >= 2:
-            attrs["Delay"], attrs["Time"] = values[0], values[1]
-        elif len(values) == 1:
-            attrs["Time"] = values[0]
-        point = _descToPoint(desc)
+        layout_vals = self._layout_runtime.extractByTypeLayout("clock", content)
+        attrs["Delay"] = layout_vals.get("Delay", "")
+        attrs["Time"] = layout_vals.get("Time", "")
+        point = _descToPoint(layout_vals.get("point", ""))
         attrs["Description"] = point
         return point, attrs
 
@@ -553,68 +570,82 @@ class Format2Parser(TimeParser):
             xy_cell = self._xyCellFromRaw(raw)
             attrs["x-coord"] = self._parseXy(xy_cell, "x-coord")
             attrs["y-coord"] = self._parseXy(xy_cell, "y-coord")
-        raw_delay = self._firstNumericFromCell(raw.get("Delay", ""))
-        raw_time = self._firstNumericFromCell(raw.get("Time", ""))
-        values, desc = _tailNNumericAndDesc(content, 2)
-        if len(values) >= 2:
-            attrs["Delay"], attrs["Time"] = values[0], values[1]
-        elif len(values) == 1:
-            attrs["Delay"], attrs["Time"] = raw_delay, values[0]
-        else:
-            attrs["Delay"], attrs["Time"] = raw_delay, raw_time
+        layout_vals = self._layout_runtime.extractByTypeLayout("port", content)
+        attrs["Delay"] = layout_vals.get("Delay", self._firstNumericFromCell(raw.get("Delay", "")))
+        attrs["Time"] = layout_vals.get("Time", self._firstNumericFromCell(raw.get("Time", "")))
         attrs["trigger_edge"] = self._triggerEdgeFromLine(content)
-        desc = self._descFromPinLine(content) or desc
-        point = _descToPoint(desc)
+        point = _descToPoint(self._descFromPinLine(content) or layout_vals.get("point", ""))
         attrs["Description"] = point
         return point, attrs
 
     def _parseConstraint(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        values, desc = _tailNNumericAndDesc(content, 2)
-        if len(values) >= 2:
-            attrs["Delay"], attrs["Time"] = values[0], values[1]
-        elif len(values) == 1:
-            attrs["Time"] = values[0]
-        point = _descToPoint(desc)
+        layout_vals = self._layout_runtime.extractByTypeLayout("constraint", content)
+        attrs["Delay"] = layout_vals.get("Delay", "")
+        attrs["Time"] = layout_vals.get("Time", "")
+        point = _descToPoint(layout_vals.get("point", ""))
+        attrs["Description"] = point
+        return point, attrs
+
+    def _parseEndpoint(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
+        attrs = {k: "" for k in self.attrs_order}
+        attrs["Type"] = raw.get("Type", "")
+        layout_vals = self._layout_runtime.extractByTypeLayout("endpoint", content)
+        point = _descToPoint(layout_vals.get("point", "") or self._descFromContent(content, col_pos))
         attrs["Description"] = point
         return point, attrs
 
     def _parseRequired(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        values, desc = _tailNNumericAndDesc(content, 1)
-        if values:
-            attrs["Time"] = values[0]
-        point = _descToPoint(desc)
+        layout_vals = self._layout_runtime.extractByTypeLayout("required", content)
+        attrs["Time"] = layout_vals.get("Time", "")
+        point = _descToPoint(layout_vals.get("point", ""))
         attrs["Description"] = point
         return point, attrs
 
     def _parseArrival(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        values, desc = _tailNNumericAndDesc(content, 1)
-        if values:
-            attrs["Time"] = values[0]
-        point = _descToPoint(desc)
+        layout_vals = self._layout_runtime.extractByTypeLayout("arrival", content)
+        attrs["Time"] = layout_vals.get("Time", "")
+        point = _descToPoint(layout_vals.get("point", ""))
         attrs["Description"] = point
         return point, attrs
 
     def _parseSlack(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        values, desc = _tailNNumericAndDesc(content, 1)
-        if values:
-            attrs["Time"] = values[0]
-        point = _descToPoint(desc)
+        layout_vals = self._layout_runtime.extractByTypeLayout("slack", content)
+        attrs["Time"] = layout_vals.get("Time", "")
+        point = _descToPoint(layout_vals.get("point", ""))
         attrs["Description"] = point
         return point, attrs
 
 
 # ---------------------------------------------------------------------------
-# Backward-compatible aliases (旧导入路径使用下划线命名)
+# Backward-compatible aliases (                  )
 # ---------------------------------------------------------------------------
 _desc_to_point = _descToPoint
 _tail_n_numeric_and_desc = _tailNNumericAndDesc
 _is_numeric_token = _isNumericToken
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

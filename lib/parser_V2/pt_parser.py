@@ -1,8 +1,8 @@
 """
 PT（PrimeTime 风格）Timing 报告解析器。
 
-继承 Format1Parser，覆盖表头与正则以匹配 PT 的 Startpoint/Endpoint（无括号类型）、
-Mean/Sensit 列及 library setup/hold 行。
+继承 Format1Parser，覆盖表头与正则以匹配 PT 的 Startpoint/Endpoint、Mean/Sensit 列及
+library setup/hold 行等差异。
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import re
 from typing import Any, Dict, List
 
 from .format1_parser import Format1Parser
+from .layout_runtime import LayoutRuntime
 
 
 PT_FLOAT_COLS = ("Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path")
@@ -28,7 +29,7 @@ def _format_pt_metric_for_csv(col: str, val: Any) -> Any:
     if col in PT_FLOAT_COLS:
         try:
             s = str(val).replace("&", "").strip()
-            # 去掉末尾的 r/f
+            #        ?r/f
             for suffix in (" r", " f"):
                 if s.endswith(suffix):
                     s = s[:-2].strip()
@@ -40,7 +41,11 @@ def _format_pt_metric_for_csv(col: str, val: Any) -> Any:
 
 
 class PtParser(Format1Parser):
-    """PT 报告解析器。表头含 Point, Fanout, Cap, Trans, Derate, Mean, Sensit, Incr, Path；Startpoint/Endpoint 可为实例名。"""
+    """PT 报告解析器。"""
+
+    def __init__(self, attrs_order: list[str] | None = None, attrs_by_type: dict[str, list[str]] | None = None) -> None:
+        super().__init__(attrs_order, attrs_by_type)
+        self._layout_runtime = LayoutRuntime("pt")
 
     default_attrs_order = ["Fanout", "Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"]
     skip_first_rows = 2
@@ -85,11 +90,11 @@ class PtParser(Format1Parser):
             "slack_status": "",
             "arrival_time": "",
             "required_time": "",
-            # Last common pin（公共点概念）相关派生字段
+            # Last common pin                   ?
             "last_common_pin": "",
-            # common pin 处的累计延迟（PT/format1 用 Path）
+            # common pin            T/format1  ?Path ?
             "common_pin_delay": "",
-            # capture 侧第一行 clock 的周期度量（PT/format1 用 Incr）
+            # capture       ?clock          PT/format1  ?Incr ?
             "clock_period": "",
             "uncertainty": "",
         }
@@ -120,7 +125,7 @@ class PtParser(Format1Parser):
                 meta["slack"] = vm.group(1).strip() if vm else ""
                 break
 
-        # 兼容 Last common pin 行在 slack 之后才出现：全局扫描兜底
+        #     Last common pin     slack                   
         if not meta.get("last_common_pin"):
             for line in lines:
                 m_lcp = self._re_last_common_pin.match(line) or self._re_last_common_pin2.match(line)
@@ -212,7 +217,7 @@ class PtParser(Format1Parser):
 
         self._fillUncertainty(lines, meta)
 
-        # 派生字段：last_common_pin/common_pin_delay/clock_period
+        #         ast_common_pin/common_pin_delay/clock_period
         if not meta.get("last_common_pin"):
             meta["last_common_pin"] = meta.get("startpoint", "")
 
@@ -240,12 +245,12 @@ class PtParser(Format1Parser):
 
     def _classify_row_kind(self, point: str, line: str, segment_row_index: int, in_launch: bool) -> str:
         """
-        根据行内容与推断类型，返回当前点表行的 row_kind：
-        - clock:           launch/capture 段的第一行 clock 行
-        - clock_src_lat:   clock source latency 行
-        - net:             含 (net) 的行
-        - pin:             其余 pin 行
-        其他行返回空串，表示使用原始定宽解析结果。
+                                    ?row_kind ?
+        - clock:           launch/capture        ?clock  ?
+        - clock_src_lat:   clock source latency  ?
+        - net:              ?(net)    
+        - pin:                 pin  ?
+                                       ?
         """
         if self._re_clock_rise.match(line):
             return "clock"
@@ -263,14 +268,18 @@ class PtParser(Format1Parser):
         col_pos: dict[str, int],
         row_kind: str,
     ) -> Dict[str, str] | None:
-        """
-        基于 row_kind + 数值 token 顺序解析当前行的数值列。
-
-        若无法可靠映射（无数字或 row_kind 未知），返回 None，调用方应回退到 parseFixedWidthAttrs 的 attrs。
-        """
-        # 行类型未知时不启用数值映射；不再依赖列起始位置，仅看整行数值顺序
+        """PT                  net        """
         if not row_kind:
             return None
+
+        layout_attrs = self._layout_runtime.extractRowKindNumeric(row_kind, line)
+        if layout_attrs and row_kind != "net":
+            attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
+            for col, val in layout_attrs.items():
+                if col in attrs and val:
+                    attrs[col] = val
+            return attrs
+
         expected_by_kind: Dict[str, List[str]] = {
             "clock": ["Mean", "Incr", "Path"],
             "clock_src_lat": ["Mean", "Sensit", "Incr", "Path"],
@@ -281,7 +290,6 @@ class PtParser(Format1Parser):
         if not expected:
             return None
 
-        # net 行点名中可能包含形如 n2055 的数字；需要跳过 "(net)" 之前的数字，避免把网名尾号误判为 Fanout
         if row_kind == "net":
             attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
             after_net = ""
@@ -296,13 +304,12 @@ class PtParser(Format1Parser):
                 attrs[name] = nums[i]
             return attrs
 
-        # 在整行中提取数值 token，并从行尾向前取对应数量，适配不同列宽与轻微错位
         tokens_iter = list(re.finditer(r"-?\d+(?:\.\d+)?", line))
         if not tokens_iter:
             return None
         tokens = [m.group(0) for m in tokens_iter]
 
-        attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
+        attrs = {name: "" for name in self.attrs_order}
         limit = min(len(tokens), len(expected))
         tail = tokens[-limit:] if limit else []
         for i, name in enumerate(expected[:limit]):
@@ -316,7 +323,7 @@ class PtParser(Format1Parser):
         point: str,
         attrs: dict[str, Any],
     ) -> dict[str, Any]:
-        """同基类；PT 抽取结果去掉 Incr 的 &，Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+        """      PT           Incr  ?&  anout      ap/Trans/Derate/Mean/Sensit/Incr/Path     4       """
         row = super().buildPointRow(meta, point_index, point, attrs)
         incr = row.get("Incr", "")
         if isinstance(incr, str) and "&" in incr:
@@ -325,4 +332,11 @@ class PtParser(Format1Parser):
             if col in row and row[col] not in (None, ""):
                 row[col] = _format_pt_metric_for_csv(col, row[col])
         return row
+
+
+
+
+
+
+
 

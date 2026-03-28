@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.pt_parser import PtParser
+from lib.parser_V2.pt_parser import PtParser
 
 
 PT_REPORT_MINIMAL = r"""

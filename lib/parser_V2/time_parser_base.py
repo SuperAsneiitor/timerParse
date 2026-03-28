@@ -1,9 +1,8 @@
 """
-Timing 报告解析基类与通用数据结构。
+Timing 报告解析基类与通用数据结构（lib.parser_V2 组成部分）。
 
-本模块提供解析链路中的抽象基类 TimeParser 与解析结果容器 ParseOutput。
-职责：定义单 path 解析接口（scanPathBlocks、parseOnePath）、launch 段按 common pin 拆分、
-固定列宽解析与 CSV 写出；不读报告文件以外的 I/O，由 extract 层负责编排与写文件。
+提供 TimeParser / ParseOutput、launch 按 common pin 拆分、固定列宽解析与 CSV 写出；
+由 extract 子命令与 create_timing_report_parser 使用。
 """
 from __future__ import annotations
 
@@ -72,6 +71,9 @@ class TimeParser(ABC):
             "path_id",
             "startpoint",
             "endpoint",
+            "path_type",
+            "startpoint_clock",
+            "endpoint_clock",
             "arrival_time",
             "required_time",
             # Last common pin（PT/Timing report 的公共点概念）相关派生字段：

@@ -1,0 +1,7 @@
+﻿format: pt
+
+row_kind_numeric:
+  clock: [Mean, Incr, Path]
+  clock_src_lat: [Mean, Sensit, Incr, Path]
+  net: [Fanout, Cap, Incr, Path]
+  pin: [Trans, Derate, Mean, Sensit, Incr, Path]

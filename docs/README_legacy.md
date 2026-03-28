@@ -71,7 +71,7 @@ python -m lib extract path/to/report.rpt -o output -j 4 -p 10000 -m
 
 #### parser_chaos：分割器 + 解析器进程 + 队列
 
-另一套**独立实现**位于 `lib/parser_chaos`，采用 1 个报告分割器进程 + N 个解析器 Worker 进程 + 队列的架构，与 `lib/parsers` 无任何引用关系。适合需要「分割与解析分离、动态分配任务」的场景。
+`lib/parser_chaos` 采用 1 个报告分割器进程 + N 个解析器 Worker 进程 + 队列；**解析器与 `extract` 相同**（`lib/parser_V2` 的 `TimeParser`），适合需要「分割与解析分离、动态分配任务」、大文件高吞吐的场景。
 
 ```bash
 python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos -f auto -j 4
@@ -291,18 +291,21 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 
 ## lib 目录结构
 
-- `lib/parsers/`：三种报告解析实现与基类
-  - `lib/parsers/time_parser_base.py`：`TimeParser`、`ParseOutput`、`split_launch_by_common_pin` 等
-  - `lib/parsers/format1_parser.py` / `format2_parser.py` / `pt_parser.py`
+- `lib/parser_V2/`：**唯一**三种报告解析实现与基类
+  - `time_parser_base.py`：`TimeParser`、`ParseOutput`、`splitLaunchByCommonPin`、定宽解析、`writeCsv`
+  - `format1_parser.py` / `format2_parser.py` / `pt_parser.py`
+  - `engine.py`：`create_timing_report_parser`、`detect_report_format`、`TimingParserV2`（YAML 布局）
+  - `layout_config.py` / `layout_runtime.py`：`config/parse_layouts/*.yaml`
 - `lib/report_gen/`：timing report 生成器（模板基类 + 三种格式子类）
   - `lib/report_gen/base.py`：`TimingReportTemplate`
   - `lib/report_gen/format1.py` / `format2.py` / `pt.py`
 - `lib/extract.py`：extract 子命令逻辑（解析 + 写 CSV）
+- `lib/parser_chaos/`：extract-chaos；解析器同 `parser_V2`，仅进程模型不同
 - `lib/gen_pt_report_timing.py`：gen-pt 子命令逻辑（launch_path → report_timing TCL）
 - `lib/compare/`：compare 子命令实现；`lib/compare_path_summary.py` 为薄入口
 - `lib/cli.py`：统一入口与子命令分发；`lib/__main__.py` 调用 `run_cli()`
 
-兼容性：仍保留 `lib/format1_parser.py` 等旧模块路径作为薄包装转发到 `lib/parsers/`。
+测试与代码请 **`from lib.parser_V2.xxx import ...`** 引用解析器；根目录不再提供 `lib/format1_parser.py` 等薄包装。
 
 `scripts/` 下保留薄包装脚本，内部调用 `python -m lib <子命令>`，便于旧命令行习惯。
 

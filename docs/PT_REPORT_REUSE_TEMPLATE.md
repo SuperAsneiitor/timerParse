@@ -64,7 +64,7 @@
   - `Mean/Incr/Path` 保留 4 位小数。  
 - **clock source latency 行**：第二行文案统一为 `clock source latency`，其数值同样按 4 位小数输出。  
 - **端口行 `dft_clk (in)`**：在 `Trans, Mean, Sensit, Incr, Path` 上均应有数值，便于验证端口一侧 clock 路径的解析。  
-- **统一精度**：在生成与解析（lib/parsers + parser_chaos）端保持一致：  
+- **统一精度**：在生成与解析（**lib/parser_V2**，含 extract 与 extract-chaos）端保持一致：  
   - `Fanout` 为整数；  
   - `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一 4 位小数。
 

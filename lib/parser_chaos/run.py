@@ -1,45 +1,35 @@
 """
-parser_chaos 流水线编排与入口。
-
-职责：创建任务队列与结果队列，启动 1 个分割器进程与 N 个解析器 Worker 进程，
-收集结果后聚合、写出 CSV。与 lib.parsers 及 lib.extract 完全独立。
+parser_chaos：1 个分割器进程 + N 个 Worker + 队列；解析器与 extract 相同（parser_V2）。
 """
 from __future__ import annotations
 
 import csv
 import os
-import sys
-from pathlib import Path
 from multiprocessing import Process, Queue
+from pathlib import Path
+
+from lib.extract import SEMANTIC_POINT_ATTRS
+from lib.parser_V2.engine import create_timing_report_parser, detect_report_format
+from lib.parser_V2.time_parser_base import TimeParser
 
 from .. import log_util
 from .aggregator import isResultSentinel, splitLaunchByCommonPin
-from .constants import (
-    FORMAT1,
-    FORMAT_FORMAT2,
-    FORMAT_PT,
-    POINT_BASE_COLUMNS,
-    SEMANTIC_POINT_ATTRS,
-    SUMMARY_COLUMNS,
-)
+from .constants import FORMAT1, TASK_SENTINEL
 from .models import ParseOutput
-from .parser_format1 import ATTRS_ORDER as FORMAT1_ATTRS
-from .parser_pt import ATTRS_ORDER as PT_ATTRS
 from .splitter import runSplitterProcess
 from .worker import runWorkerProcess
 
-# 各格式点表列顺序（用于 CSV 表头）
-_FORMAT_ATTRS = {
-    FORMAT1: FORMAT1_ATTRS,
-    FORMAT_PT: PT_ATTRS,
-    FORMAT_FORMAT2: ["Type", "Fanout", "Cap", "D-Trans", "Trans", "Derate", "x-coord", "y-coord", "D-Delay", "Delay", "Time", "trigger_edge", "Description"],
-}
-
-# 各格式用于累加延迟的列名（launch_clock/data_path 段求和）
-_DELAY_ATTR = {FORMAT1: "Incr", FORMAT_PT: "Incr", FORMAT_FORMAT2: "Delay"}
-
-# 任务队列最大长度，避免分割器过快导致内存膨胀
 TASK_QUEUE_MAXSIZE = 256
+
+
+def _csv_layout(format_key: str) -> tuple[list[str], list[str], list[str], str]:
+    """与 extract.runExtract 相同的列集合与 delay 列名。"""
+    p = create_timing_report_parser(format_key)
+    semantic_attrs = list(dict.fromkeys(SEMANTIC_POINT_ATTRS + (p.attrs_order or [])))
+    base_cols = p.point_base_columns + semantic_attrs
+    launch_cols = p.point_base_columns + ["path_type"] + semantic_attrs
+    delay_attr = "Incr" if "Incr" in p.attrs_order else "Delay"
+    return base_cols, launch_cols, list(p.summary_columns), delay_attr
 
 
 def runExtractChaos(
@@ -51,14 +41,6 @@ def runExtractChaos(
     merge_launch: bool = False,
     log_level: str = "brief",
 ) -> int:
-    """
-    使用「1 个分割器 + N 个解析器」流水线执行报告解析并写出 CSV。
-
-    逻辑：创建 task_queue、result_queue；启动 1 个分割器进程（读报告、切块、放入 task_queue），
-    启动 num_workers 个 Worker 进程（从 task_queue 取块、解析、放入 result_queue）；主进程
-    从 result_queue 收集直至收到 num_workers 个结束哨兵；按 path_id 排序后聚合，写出 5 个 CSV。
-    若 format_key 为 auto，则根据报告内容检测格式。返回 0 成功，1 失败。
-    """
     log_util.set_level(log_level)
     report_path = os.path.abspath(report_path)
     output_dir = os.path.abspath(output_dir)
@@ -70,7 +52,6 @@ def runExtractChaos(
         log_util.brief(f"Format: {format_key} (auto-detected)")
     else:
         log_util.brief(f"Format: {format_key}")
-    # apr 与 format1 同一格式，统一为 format1
     if format_key == "apr":
         format_key = FORMAT1
 
@@ -93,7 +74,7 @@ def runExtractChaos(
     for w in workers:
         w.start()
 
-    delay_attr = _DELAY_ATTR.get(format_key, "Incr")
+    _, _, _, delay_attr = _csv_layout(format_key)
     try:
         if int(paths_per_shard or 0) > 0:
             collectAndWriteSharded(
@@ -124,12 +105,6 @@ def runExtractChaos(
 
 
 def collectResults(result_queue: Queue, num_workers: int) -> list:
-    """
-    从 result_queue 收集解析结果，直到收到 num_workers 个结束哨兵。
-
-    逻辑：循环 get()；若为结束哨兵则 end_count += 1，达到 num_workers 时返回；
-    若为异常则抛出；否则将 (path_id, meta, launch, capture) 加入列表。
-    """
     results = []
     end_count = 0
     while end_count < num_workers:
@@ -143,9 +118,7 @@ def collectResults(result_queue: Queue, num_workers: int) -> list:
     return results
 
 
-def aggregateResultsLegacy(results: list, delay_attr: str) -> "ParseOutput":
-    """兼容旧实现：一次性聚合全部结果，保留给非分片模式。"""
-    # 延迟导入以避免与分片逻辑混淆
+def aggregateResultsLegacy(results: list, delay_attr: str) -> ParseOutput:
     from .aggregator import aggregateResults
 
     return aggregateResults(results, delay_attr=delay_attr)
@@ -161,12 +134,8 @@ def collectAndWriteSharded(
     merge_summary: bool = True,
     merge_launch: bool = False,
 ) -> None:
-    """从 result_queue 边收集边按 path 数分片写出 CSV，并可在末尾合并 summary/launch。"""
     os.makedirs(output_dir, exist_ok=True)
-    attrs_order = _FORMAT_ATTRS.get(format_key, FORMAT1_ATTRS)
-    semantic_attrs = list(dict.fromkeys(SEMANTIC_POINT_ATTRS + attrs_order))
-    base_cols = POINT_BASE_COLUMNS + semantic_attrs
-    launch_cols = POINT_BASE_COLUMNS + ["path_type"] + semantic_attrs
+    base_cols, launch_cols, summary_cols, _ = _csv_layout(format_key)
 
     shard_index = 1
     shard_paths: list[tuple[int, dict, list[dict], list[dict]]] = []
@@ -191,11 +160,8 @@ def collectAndWriteSharded(
             meta["launch_clock_point_count"] = lc_n
             meta["data_path_point_count"] = dp_n
             meta["capture_point_count"] = len(capture)
-            # cleanMetricFloat 在 utils 中，aggregateResults 里也用；这里复用旧逻辑
-            from .utils import cleanMetricFloat
-
-            meta["launch_clock_delay"] = cleanMetricFloat(lc_delay)
-            meta["data_path_delay"] = cleanMetricFloat(dp_delay)
+            meta["launch_clock_delay"] = TimeParser._cleanMetricFloat(lc_delay)
+            meta["data_path_delay"] = TimeParser._cleanMetricFloat(dp_delay)
             summary_rows.append(meta)
             launch_rows.extend(launch)
             capture_rows.extend(capture)
@@ -205,7 +171,7 @@ def collectAndWriteSharded(
         suffix = f"_part{shard_index}.csv"
         _writeCsv(os.path.join(output_dir, f"launch_path{suffix}"), launch_rows, launch_cols)
         _writeCsv(os.path.join(output_dir, f"capture_path{suffix}"), capture_rows, base_cols)
-        _writeCsv(os.path.join(output_dir, f"path_summary{suffix}"), summary_rows, SUMMARY_COLUMNS)
+        _writeCsv(os.path.join(output_dir, f"path_summary{suffix}"), summary_rows, summary_cols)
         _writeCsv(os.path.join(output_dir, f"launch_clock_path{suffix}"), launch_clock_rows, base_cols)
         _writeCsv(os.path.join(output_dir, f"data_path{suffix}"), data_path_rows, base_cols)
 
@@ -236,7 +202,6 @@ def collectAndWriteSharded(
 
 
 def _mergeCsvParts(output_dir: str, base_name: str, merged_name: str | None = None) -> str:
-    """将 base_name_part*.csv 合并为单个 CSV，并返回合并后的路径。"""
     merged_name = merged_name or f"{base_name}.csv"
     out_path = str(Path(output_dir) / merged_name)
     parts = sorted(Path(output_dir).glob(f"{base_name}_part*.csv"))
@@ -256,21 +221,12 @@ def _mergeCsvParts(output_dir: str, base_name: str, merged_name: str | None = No
 
 
 def writeOutputCsv(output: ParseOutput, output_dir: str, format_key: str) -> None:
-    """
-    将 ParseOutput 按与现有 extract 相同的 5 个文件写出到 output_dir。
-
-    文件：launch_path.csv（含 path_type）、capture_path.csv、path_summary.csv、
-    launch_clock_path.csv、data_path.csv。列顺序由 POINT_BASE_COLUMNS、SUMMARY_COLUMNS 与格式属性列决定。
-    """
     os.makedirs(output_dir, exist_ok=True)
-    attrs_order = _FORMAT_ATTRS.get(format_key, FORMAT1_ATTRS)
-    semantic_attrs = list(dict.fromkeys(SEMANTIC_POINT_ATTRS + attrs_order))
-    base_cols = POINT_BASE_COLUMNS + semantic_attrs
-    launch_cols = POINT_BASE_COLUMNS + ["path_type"] + semantic_attrs
+    base_cols, launch_cols, summary_cols, _ = _csv_layout(format_key)
 
     _writeCsv(os.path.join(output_dir, "launch_path.csv"), output.launch_rows, launch_cols)
     _writeCsv(os.path.join(output_dir, "capture_path.csv"), output.capture_rows, base_cols)
-    _writeCsv(os.path.join(output_dir, "path_summary.csv"), output.summary_rows, SUMMARY_COLUMNS)
+    _writeCsv(os.path.join(output_dir, "path_summary.csv"), output.summary_rows, summary_cols)
     _writeCsv(os.path.join(output_dir, "launch_clock_path.csv"), output.launch_clock_rows, base_cols)
     _writeCsv(os.path.join(output_dir, "data_path.csv"), output.data_path_rows, base_cols)
 
@@ -290,7 +246,6 @@ def writeOutputCsv(output: ParseOutput, output_dir: str, format_key: str) -> Non
 
 
 def _writeCsv(output_path: str, rows: list[dict], columns: list[str]) -> None:
-    """将行数据按列顺序写出为 CSV（UTF-8 BOM）。"""
     os.makedirs(os.path.dirname(os.path.abspath(output_path)) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
@@ -299,22 +254,6 @@ def _writeCsv(output_path: str, rows: list[dict], columns: list[str]) -> None:
 
 
 def detectFormatFromReport(report_path: str) -> str:
-    """
-    根据报告文件开头内容自动识别格式，返回 format1 / format2 / pt。
-
-    逻辑：读前 8KB 文本，若含 "Path Start" 与 "Path End" 及 slack 则 format2；
-    若含 "Report : timing" 与 "Derate" 与 "Startpoint:" 则 pt；否则 format1。
-    """
     with open(report_path, "r", encoding="utf-8", errors="replace") as f:
         peek = f.read(8192)
-    if not peek:
-        return FORMAT1
-    if "Path Start" in peek and "Path End" in peek and (
-        "slack (VIOLATED" in peek or "slack (MET)" in peek
-    ):
-        return FORMAT_FORMAT2
-    if "Report : timing" in peek and "Derate" in peek and "Startpoint:" in peek:
-        return FORMAT_PT
-    if "Startpoint:" in peek and ("slack (VIOLATED" in peek or "slack (MET)" in peek):
-        return FORMAT1
-    return FORMAT1
+    return detect_report_format(peek or "")

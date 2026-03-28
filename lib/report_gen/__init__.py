@@ -139,11 +139,33 @@ def run_gen_report(args) -> int:
     gen = create_generator(fmt)
     seed = getattr(args, "seed", None)
     output = getattr(args, "output", None) or f"output/gen_{fmt}_timing_report.rpt"
+    manifest_in_path = (getattr(args, "path_manifest_in", "") or "").strip()
+    manifest_out_path = (getattr(args, "path_manifest_out", "") or "").strip()
+    manifest_in: dict[str, Any] | None = None
+    if manifest_in_path:
+        try:
+            manifest_in = _load_yaml_file(Path(manifest_in_path).resolve())
+            if not isinstance(manifest_in, dict):
+                raise ValueError("manifest content should be dict")
+        except Exception as e:
+            log_util.error(f"Error: 读取 path manifest 失败: {e}")
+            return 1
     try:
-        gen.generate(config, output_path=output, seed=seed)
+        gen.generate(config, output_path=output, seed=seed, manifest_in=manifest_in)
     except Exception as e:
         log_util.error(f"Error: 生成报告失败: {e}")
         return 1
+    if manifest_out_path:
+        try:
+            out_path = Path(manifest_out_path).resolve()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            import json
+
+            out_path.write_text(json.dumps(getattr(gen, "last_manifest", {}) or {}, ensure_ascii=False, indent=2), encoding="utf-8")
+            log_util.full(f"  path_manifest_out: {out_path}")
+        except Exception as e:
+            log_util.error(f"Error: 写出 path manifest 失败: {e}")
+            return 1
     num_paths = int(config.get("num_paths", 0))
     log_util.brief(f"Generated timing report -> {output}")
     log_util.full(f"  config: {config_path}")

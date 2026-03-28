@@ -6,11 +6,12 @@
 
 ## 1. 项目与目标
 
-- **仓库**：timerParse（GitHub: SuperAsneiitor/timerParse）
+- **仓库**：timerExtract / timerParse（以你远程名为准）
 - **核心目标**：解析/生成三种 Timing 报告格式（format1、format2、pt），用 YAML 模板统一控制生成，以 PT 结果为 golden 校验 format1/format2 抽取结果。
-- **两套解析实现**：
-  - **lib/parsers + lib/extract**：主流程；主进程 scanPathBlocks 后 Pool.map 或单进程 parseReport。
-  - **lib/parser_chaos**：独立实现；1 个分割器进程 + N 个解析器进程 + 队列，分割与解析分离、任务动态分配。
+- **解析与抽取**：
+  - **lib/parser_V2**：唯一完整解析实现（`TimeParser` 子类）。
+  - **lib/extract**：主进程路径；`Pool` 或单进程解析后写 CSV。
+  - **lib/parser_chaos**：**同一解析器**；1 分割器 + N Worker + 队列，仅调度模型不同。
 
 ---
 
@@ -24,9 +25,9 @@
 
 | 路径 | 说明 |
 |------|------|
-| **lib/parser_chaos/** | 独立解析流水线：splitter / worker / aggregator / run，不引用 lib.parsers |
-| **lib/parsers/** | 原有解析器：time_parser_base、format1_parser、format2_parser、pt_parser |
-| **lib/extract.py** | 原有 extract 入口，调用 parsers |
+| **lib/parser_V2/** | 解析器与基类：format1/2/pt、`create_timing_report_parser`、`TimingParserV2` |
+| **lib/parser_chaos/** | 高吞吐抽取：splitter / worker / aggregator / run；Worker 内调用 parser_V2 |
+| **lib/extract.py** | extract 入口，调用 parser_V2 |
 | **lib/report_gen/** | 报告生成（YAML → .rpt） |
 | **config/gen_report/** | base.yaml、format1.yaml、format2.yaml、pt.yaml |
 | **scripts/run_extract_chaos.py** | parser_chaos 命令行入口（1 分割器 + N Worker + 队列） |
@@ -66,16 +67,18 @@ python scripts/run_validation_flow.py --jobs 4
 
 ## 6. 近期变更摘要
 
-- 新增 **lib/parser_chaos**：分割器进程 + 解析器 Worker 进程 + 队列；与 lib.parsers 完全独立。
-- **格式统一**：FORMAT_FORMAT1 与 FORMAT_APR 统一为 FORMAT1；入口处将 `apr` 规范为 `format1`。
-- **文档**：README 增加 parser_chaos 小节；docs/parser_chaos.md 描述架构与用法；本文件为会话迁移说明。
+- **lib/parsers 已移除**：解析代码统一在 **lib/parser_V2**。
+- **parser_chaos** 与 **extract** 共用 **parser_V2**；已删除 chaos 内重复的 `parser_format*.py`。
+- **格式统一**：`apr` 与 `format1` 同义；入口处规范为 `format1`。
+- **文档**：见 [ARCHITECTURE.md](ARCHITECTURE.md)、[parser_chaos.md](parser_chaos.md)。
 
 ---
 
 ## 7. 文档索引
 
 - [README.md](../README.md)：项目总览与统一入口用法。
-- [docs/parser_chaos.md](parser_chaos.md)：parser_chaos 架构、用法、与 extract 的差异。
+- [docs/ARCHITECTURE.md](ARCHITECTURE.md)：`lib/` 模块划分与数据流。
+- [docs/parser_chaos.md](parser_chaos.md)：extract-chaos 流水线。
 - [docs/FORMAT_VALIDATION.md](FORMAT_VALIDATION.md)：三格式结构对比与验证说明。
 - [.cursor/skills/python-coding-standards/](../.cursor/skills/python-coding-standards/)：Python 编码规范（驼峰、中文注释、单一职责等）。
 

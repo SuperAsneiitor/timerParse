@@ -1,0 +1,63 @@
+path_start_regex: '^\s*Startpoint\s*:'
+table_header_contains: [point, fanout, cap, trans, incr, path]
+table_separator_regex: '^-{3,}\s*$'
+arrival_switch_regex: '\bdata\s+arrival\s+time\b'
+capture_stop_regexes:
+  - '\bslack\b'
+meta_regex:
+  startpoint: '^\s*Startpoint\s*:\s*(.+?)\s*$'
+  endpoint: '^\s*Endpoint\s*:\s*(.+?)\s*$'
+  path_group: '^\s*Path Group\s*:\s*(.+?)\s*$'
+  path_type: '^\s*Path Type\s*:\s*(.+?)\s*$'
+type_classify:
+  - emit: clock
+    priority: 100
+    when: { token_eq: { index: 0, value: clock } }
+  - emit: net
+    priority: 95
+    when: { token_eq: { index: 0, value: net } }
+  - emit: net
+    priority: 90
+    when: { contains: '(net)' }
+  - emit: constraint
+    priority: 80
+    when: { token_eq: { index: 0, value: constraint } }
+  - emit: required
+    priority: 70
+    when: { regex: '^required\s+time' }
+  - emit: arrival
+    priority: 70
+    when: { regex: '^arrival\s+time' }
+  - emit: slack
+    priority: 70
+    when: { token_eq: { index: 0, value: slack } }
+  - emit: pin
+    priority: 10
+    when: { regex: '^[a-zA-Z0-9_./\-\[\]():]+' }
+type_layouts:
+  clock:
+    tail_numeric: [Incr, Path]
+    point_from: after_last_numeric
+  net:
+    fanout_idx: 1
+    cap_idx: 2
+    desc_start_idx: 3
+    unit_marker_regex: '^[a-zA-Z]{1,8}$'
+  constraint:
+    tail_numeric: [Incr, Path]
+    point_from: after_last_numeric
+  required:
+    tail_numeric: [Path]
+    point_from: after_last_numeric
+  arrival:
+    tail_numeric: [Path]
+    point_from: after_last_numeric
+  slack:
+    tail_numeric: [Path]
+    point_from: after_last_numeric
+  pin:
+    tail_numeric: [Incr, Path]
+    point_from: after_last_numeric
+  other:
+    tail_numeric: [Incr, Path]
+    point_from: after_last_numeric

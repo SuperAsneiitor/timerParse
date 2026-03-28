@@ -12,18 +12,12 @@ git diff --stat
 ## 2. 添加并提交
 
 ```bash
-git add lib/parsers/time_parser_base.py lib/parsers/format1_parser.py lib/parsers/format2_parser.py lib/parsers/pt_parser.py lib/__init__.py lib/extract.py lib/cli.py tests/test_format1_parser.py tests/test_format2_parser.py tests/test_pt_parser.py
-git commit -m "refactor(parsers): apply Python coding standards — camelCase, Chinese docstrings, single responsibility
-
-- time_parser_base: rename to camelCase (parseReport, splitLaunchByCommonPin, writeCsv, etc.), add module/function docstrings
-- format1_parser: scanPathBlocks, parseOnePath, extractColumnPositions, parseFixedWidthAttrs, applyTypeFilter, buildPointRow; split parseOnePath into _fillMetaFromHeader, _findTableStart, _parseLaunchSegment, _parseCaptureSegment
-- format2_parser: same renames + _parseLineByType, _parseInputPin, _parseOutputPin, etc.
-- pt_parser: parseOnePath and base method calls
-- lib/__init__: createParser, detectReportFormat
-- extract: runExtract, parseWithJobs, _workerParseOne, createParser/detectReportFormat/writeCsv
-- cli: runExtract
-- tests: parse_report -> parseReport"
+git add -A
+git status
+git commit -m "你的提交说明"
 ```
+
+> 说明：解析代码现位于 **`lib/parser_V2/`**（已移除历史 `lib/parsers/`）。提交前请 `git status` 确认暂存范围。
 
 ## 3. 推送到 GitHub
 
@@ -43,6 +37,6 @@ git push -u origin HEAD
 ## 4. 验证（提交前建议执行）
 
 ```bash
-python -m pytest tests/ -v --tb=short
-python scripts/run_validation_flow.py --jobs 2
+python -m unittest discover -s tests -p "test_*.py" -q
+# 可选：python scripts/run_validation_flow.py --jobs 2
 ```

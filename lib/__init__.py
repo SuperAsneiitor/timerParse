@@ -1,42 +1,28 @@
 """
-lib 包入口：报告格式检测、解析器工厂与对外导出。
+lib 包入口（模块分工）：
 
-职责：detectReportFormat 根据报告文本识别 format1/format2/pt；
-createParser 按格式返回对应解析器实例。解析与抽取由 parsers 与 extract 完成。
+- parser_V2/   Timing 解析唯一实现：TimeParser 子类 + YAML 布局引擎 TimingParserV2
+- extract.py   主抽取：单进程或多进程 Pool → 标准 CSV
+- parser_chaos/  高吞吐：分割器 + 队列 + Worker（解析器与 extract 相同）
+- report_gen/  按 YAML 生成报告；compare*/ gen_pt_report_timing / cli / log_util 为下游工具
 """
 from __future__ import annotations
 
-from .parsers.format1_parser import Format1Parser
-from .parsers.format2_parser import Format2Parser
-from .parsers.pt_parser import PtParser
-from .parsers.time_parser_base import ParseOutput, TimeParser
+from .parser_V2.engine import create_timing_report_parser, detect_report_format
+from .parser_V2.format1_parser import Format1Parser
+from .parser_V2.format2_parser import Format2Parser
+from .parser_V2.pt_parser import PtParser
+from .parser_V2.time_parser_base import ParseOutput, TimeParser
 
 
 def detectReportFormat(peek_text: str) -> str:
     """根据报告开头文本自动识别格式，返回 'format1' / 'format2' / 'pt'。"""
-    if not peek_text:
-        return "format1"
-    if "Path Start" in peek_text and "Path End" in peek_text and (
-        "slack (VIOLATED" in peek_text or "slack (MET)" in peek_text
-    ):
-        return "format2"
-    if "Report : timing" in peek_text and "Derate" in peek_text and "Startpoint:" in peek_text:
-        return "pt"
-    if "Startpoint:" in peek_text and ("slack (VIOLATED" in peek_text or "slack (MET)" in peek_text):
-        return "format1"
-    return "format1"
+    return detect_report_format(peek_text)
 
 
 def createParser(format_key: str) -> TimeParser:
-    """按格式键（format1/format2/pt/apr）创建对应解析器实例。"""
-    key = (format_key or "").strip().lower()
-    if key in ("format1", "apr"):
-        return Format1Parser()
-    if key == "format2":
-        return Format2Parser()
-    if key == "pt":
-        return PtParser()
-    raise ValueError(f"Unsupported format: {format_key}")
+    """按格式键创建解析器（与 create_timing_report_parser 等价）。"""
+    return create_timing_report_parser(format_key)
 
 
 __all__ = [
@@ -46,5 +32,7 @@ __all__ = [
     "Format2Parser",
     "PtParser",
     "createParser",
+    "create_timing_report_parser",
     "detectReportFormat",
+    "detect_report_format",
 ]

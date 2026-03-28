@@ -3,7 +3,7 @@ parser_chaos 数据模型。
 
 定义解析流水线产出的数据结构：ParseOutput 为单次抽取的完整结果容器，
 包含按 path 合并后的 launch/capture/summary 以及按 startpoint 拆分后的 launch_clock/data_path。
-与 lib.parsers 完全独立，不引用其任何代码。
+与 extract 输出结构对齐，供多进程聚合写出 CSV。
 """
 from __future__ import annotations
 

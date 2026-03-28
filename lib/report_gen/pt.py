@@ -134,7 +134,13 @@ class PtReport(TimingReportTemplate):
             parts.append((cells[i] if i < len(cells) else "").ljust(w)[:w])
         return "".join(parts).rstrip()
 
-    def generate(self, config: dict, output_path: str, seed: int | None = None) -> None:
+    def generate(
+        self,
+        config: dict,
+        output_path: str,
+        seed: int | None = None,
+        manifest_in: dict[str, Any] | None = None,
+    ) -> None:
         # PT 采用专用流程，严格控制分隔符与 summary 区块位置。
         plan = self.build_render_plan(config)
         title_config = config.get("title", {}).get("attributes") or []
@@ -148,6 +154,7 @@ class PtReport(TimingReportTemplate):
         cumulative_sources = set(plan.cumulative_rules.values())
 
         lines: list[str] = []
+        manifest_out: dict[str, Any] = {"paths": []}
         for path_idx in range(num_paths):
             template_ctx: dict[str, object] = {"path_index": path_idx, "path_id": path_idx + 1}
             if seed is not None:
@@ -155,7 +162,7 @@ class PtReport(TimingReportTemplate):
             for k, spec in (config.get("path_vars") or {}).items():
                 template_ctx[k] = ValueResolver.resolve_value(spec, template_ctx)
 
-            launch_rows = self._expand_rows(plan.row_templates, template_ctx)
+            launch_rows = self._trimSegmentAfterEndpointPin(self._expand_rows(plan.row_templates, template_ctx))
             capture_rows = self._expand_rows(plan.capture_templates, template_ctx) if plan.capture_templates else []
             path_ctx = self._build_path_ctx(
                 config,
@@ -165,8 +172,42 @@ class PtReport(TimingReportTemplate):
                 capture_rows,
             )
             path_ctx["endpoint_capture_ck"] = self._capture_ck_from_endpoint(str(path_ctx.get("endpoint", "")))
-            launch_pts = path_ctx.get("launch_points") or []
-            capture_pts = path_ctx.get("capture_points") or []
+            launch_pts = list(path_ctx.get("launch_points") or [])
+            capture_pts = list(path_ctx.get("capture_points") or [])
+            path_manifest = None
+            if manifest_in:
+                paths = manifest_in.get("paths") or []
+                if path_idx < len(paths):
+                    path_manifest = paths[path_idx] or {}
+            if path_manifest:
+                launch_pts = self._applyManifestToSegment(launch_rows, launch_pts, path_manifest.get("launch", {}) or {})
+                capture_pts = self._applyManifestToSegment(capture_rows, capture_pts, path_manifest.get("capture", {}) or {})
+                path_ctx["launch_points"] = launch_pts
+                path_ctx["capture_points"] = capture_pts
+                if launch_pts:
+                    pin_like = {"pin", "input_pin", "output_pin"}
+                    pin_indices = [i for i, r in enumerate(launch_rows) if (r.get("type") or "").strip().lower() in pin_like]
+                    if pin_indices:
+                        output_indices = [i for i, r in enumerate(launch_rows) if (r.get("type") or "").strip().lower() == "output_pin"]
+                        input_indices = [i for i, r in enumerate(launch_rows) if (r.get("type") or "").strip().lower() == "input_pin"]
+                        start_idx = output_indices[0] if output_indices else pin_indices[0]
+                        end_idx = input_indices[-1] if input_indices else pin_indices[-1]
+                        path_ctx["startpoint"] = launch_pts[start_idx]
+                        path_ctx["endpoint"] = launch_pts[end_idx]
+                        path_ctx["common_pin"] = launch_pts[start_idx]
+                        path_ctx["startpoint_title"] = self._strip_cell(path_ctx["startpoint"])[0]
+                        path_ctx["endpoint_title"] = self._strip_cell(path_ctx["endpoint"])[0]
+                        path_ctx["common_pin_title"] = self._strip_cell(path_ctx["common_pin"])[0]
+
+            manifest_out["paths"].append(
+                {
+                    "path_id": path_idx + 1,
+                    "startpoint": path_ctx.get("startpoint", ""),
+                    "endpoint": path_ctx.get("endpoint", ""),
+                    "launch": self._collectSegmentManifest(launch_rows, launch_pts),
+                    "capture": self._collectSegmentManifest(capture_rows, capture_pts),
+                }
+            )
 
             lines.append(self.render_title_block(title_config, path_ctx))
             lines.append("")
@@ -303,4 +344,5 @@ class PtReport(TimingReportTemplate):
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(lines), encoding="utf-8")
+        self.last_manifest = manifest_out
 

@@ -1,0 +1,105 @@
+format: format2
+
+row_kind_numeric:
+  clock: [Delay, Time]
+  endpoint: []
+  constraint: [Delay, Time]
+  required: [Time]
+  arrival: [Time]
+  slack: [Time]
+  net: [Fanout, Cap, Delay, Time]
+  port: [Delay, Time]
+  input_pin: [D-Delay, Delay, Time]
+  output_pin: [Delay, Time]
+
+type_classify:
+  - id: pin-from-type
+    priority: 100
+    emit: pin
+    when:
+      token_eq:
+        index: 0
+        value: pin
+  - id: net-from-type
+    priority: 90
+    emit: net
+    when:
+      token_eq:
+        index: 0
+        value: net
+  - id: clock-from-type
+    priority: 80
+    emit: clock
+    when:
+      token_eq:
+        index: 0
+        value: clock
+  - id: port-from-type
+    priority: 70
+    emit: port
+    when:
+      token_eq:
+        index: 0
+        value: port
+  - id: constraint-from-type
+    priority: 60
+    emit: constraint
+    when:
+      token_eq:
+        index: 0
+        value: constraint
+  - id: endpoint-from-type
+    priority: 60
+    emit: endpoint
+    when:
+      token_eq:
+        index: 0
+        value: endpoint
+  - id: required-by-text
+    priority: 50
+    emit: required
+    when:
+      contains: "data required time"
+  - id: arrival-by-text
+    priority: 50
+    emit: arrival
+    when:
+      contains: "data arrival time"
+  - id: slack-by-text
+    priority: 50
+    emit: slack
+    when:
+      regex: "slack\\s*\\((?:violated|met)\\)"
+
+type_layouts:
+  clock:
+    point_from: after_last_numeric
+    tail_numeric: [Delay, Time]
+  constraint:
+    point_from: after_last_numeric
+    tail_numeric: [Delay, Time]
+  endpoint:
+    point_from: after_last_numeric
+    tail_numeric: []
+  required:
+    point_from: after_last_numeric
+    tail_numeric: [Time]
+  arrival:
+    point_from: after_last_numeric
+    tail_numeric: [Time]
+  slack:
+    point_from: after_last_numeric
+    tail_numeric: [Time]
+  port:
+    point_from: after_last_numeric
+    tail_numeric: [Delay, Time]
+  net:
+    fanout_idx: 1
+    cap_idx: 2
+    desc_start_idx: 2
+    skip_token:
+      index: 2
+      value: xd
+
+post_process:
+  trigger_edge_from_slash: true

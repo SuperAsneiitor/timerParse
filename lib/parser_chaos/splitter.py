@@ -3,7 +3,7 @@ parser_chaos 报告分割器（独立进程）。
 
 职责：在单独进程中读取报告文件，按格式将报告切分为多条 Timing Path 文本块，
 逐块放入 task_queue 供解析器进程消费；完成后放入结束哨兵。
-与 lib.parsers 完全独立，不引用其任何代码。
+仅负责按版式切分 path 文本块；具体解析在 Worker 中由 parser_V2 完成。
 """
 from __future__ import annotations
 
