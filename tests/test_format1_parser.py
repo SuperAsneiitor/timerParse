@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.parser_V2.format1_parser import Format1Parser
+from lib.parser.format1_parser import Format1Parser
 from lib.report_gen.format1 import Format1Report
 
 _F1_TABLE_COLS = ["Point", "Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path"]

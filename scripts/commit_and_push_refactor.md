@@ -17,7 +17,7 @@ git status
 git commit -m "你的提交说明"
 ```
 
-> 说明：解析代码现位于 **`lib/parser_V2/`**（已移除历史 `lib/parsers/`）。提交前请 `git status` 确认暂存范围。
+> 说明：解析代码现位于 **`lib/parser/`**（已移除历史 `lib/parsers/`）。提交前请 `git status` 确认暂存范围。
 
 ## 3. 推送到 GitHub
 

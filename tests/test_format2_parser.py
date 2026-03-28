@@ -10,7 +10,7 @@ import unittest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.parser_V2.format2_parser import (
+from lib.parser.format2_parser import (
     Format2Parser,
     _desc_to_point,
     _tail_n_numeric_and_desc,

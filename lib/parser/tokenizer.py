@@ -1,4 +1,4 @@
-"""parser_V2 分词与基础提取工具。"""
+"""lib.parser 分词与基础提取工具。"""
 from __future__ import annotations
 
 import re

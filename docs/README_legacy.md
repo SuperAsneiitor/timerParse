@@ -24,7 +24,7 @@ python -m lib <子命令> [参数...]
 | 功能 | 子命令 | 输入 | 输出 | 处理过程 |
 |------|--------|------|------|----------|
 | **解析 Timing 报告** | `extract` | 单个 timing 报告文件（`.rpt` 等） | `launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv` | 按格式(format1/format2/pt) 切 path → 每 path 解析 launch/capture → 按 startpoint 将 launch 拆成 launch_clock / data_path（`launch_path.csv` 含 `path_type`）→ 汇总写 CSV；支持 `-j` 多进程 |
-| **解析 Timing 报告（chaos）** | `extract-chaos` | 单个 timing 报告文件（`.rpt` 等） | 同上（支持分片 *_partK.csv） | `parser_chaos`：1 个分割器进程 + N 个 worker 进程，队列式切块/解析/聚合写 CSV；默认 `-j 3` |
+| **解析 Timing 报告（chaos）** | `extract-chaos` | 单个 timing 报告文件（`.rpt` 等） | 同上（支持分片 *_partK.csv） | `lib.parser.parallel_extract`：1 个分割器进程 + N 个 worker 进程，队列式切块/解析/聚合写 CSV；默认 `-j 3` |
 | **生成 PT report_timing** | `gen-pt` | `launch_path.csv`（及可选参数） | `report_timing.tcl`（含 set output_file、rm/touch、若干 report_timing 行并重定向） | 按 path_id 分组 → 每 path 用 trigger_edge 生成 -rise_through/-fall_through → 拼接 TCL；支持 `-j` |
 | **对比 path_summary** | `compare` | 两个 path_summary CSV（golden + test） | 对比 CSV（完整/简化）、`compare_stats.json`、可选 `compare_stats.csv`、图表目录、`compare_report.html`、`paths/path_*.html` 详情 | 默认按 **path_id** 对齐；可选 `--match-by signature`（起终点+path_type+双时钟）。可附 `--golden-launch-csv`/`--test-launch-csv` 与 capture 逐点对比详情页 |
 | **生成 Timing 报告** | `gen-report` | YAML 配置文件 | 指定格式的 timing 报告文件（.rpt） | 按 YAML 生成每条 path 的 Title（Scenario、Path Start、Path End、Common Pin、Group Name、Analysis Type 等）与 path 表格；支持固定值、枚举、随机数、模板等取值方式，列顺序可配置 |
@@ -69,9 +69,9 @@ python -m lib extract path/to/report.rpt -o output -j 4 -p 10000 -m
 - `launch_path.csv` 额外包含 `path_type` 列，值为 `launch_clock` 或 `data_path`。
 - `path_summary.csv` 的 `launch_clock_delay`、`data_path_delay` 写出前会做浮点清理（避免 `0.39000000000000001` 这类显示噪声）。
 
-#### parser_chaos：分割器 + 解析器进程 + 队列
+#### extract-chaos（parallel_extract）：分割器 + 解析器进程 + 队列
 
-`lib/parser_chaos` 采用 1 个报告分割器进程 + N 个解析器 Worker 进程 + 队列；**解析器与 `extract` 相同**（`lib/parser_V2` 的 `TimeParser`），适合需要「分割与解析分离、动态分配任务」、大文件高吞吐的场景。
+`lib/parser/parallel_extract.py` 采用 1 个报告分割器进程 + N 个解析器 Worker 进程 + 队列；**解析器与 `extract` 相同**（`lib/parser` 的 `TimeParser`），适合需要「分割与解析分离、动态分配任务」、大文件高吞吐的场景。
 
 ```bash
 python scripts/run_extract_chaos.py path/to/report.rpt -o output_parser_chaos -f auto -j 4
@@ -95,7 +95,7 @@ source /path/to/timerExtract/tools/lake/lake.csh
 lake extract-chaos path/to/report.rpt -o output_parser_chaos -f auto -j 4
 ```
 
-详见 [docs/parser_chaos.md](parser_chaos.md)。跨机迁移或恢复会话上下文可参考 [docs/SESSION_MIGRATION.md](SESSION_MIGRATION.md)。
+详见 [docs/extract_parallel.md](extract_parallel.md)。跨机迁移或恢复会话上下文可参考 [docs/SESSION_MIGRATION.md](SESSION_MIGRATION.md)。
 
 ---
 
@@ -242,11 +242,11 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 - **数值精度**：  
   - `Fanout` 为整数；  
   - `Cap, Trans, Derate, Mean, Sensit, Incr, Path` 统一保留 4 位小数（生成的 .rpt 与抽取后的 CSV 都遵守该规则）。  
-- **不确定性/重收敛**：每条路径的 `clock reconvergence pessimism` 与 `clock uncertainty` 会被解析为 `path_summary.csv` 中的 `clock_reconvergence_pessimism` 与 `clock_uncertainty` 列，在 `lib extract` 与 `parser_chaos` 中保持一致（旧的 `uncertainty` 列已移除）。
+- **不确定性/重收敛**：每条路径的 `clock reconvergence pessimism` 与 `clock uncertainty` 会被解析为 `path_summary.csv` 中的 `clock_reconvergence_pessimism` 与 `clock_uncertainty` 列，在 `lib extract` 与 `extract-chaos`（parallel_extract）中保持一致（旧的 `uncertainty` 列已移除）。
 
 #### 4.2 Format1 报告的智能解析（行类型 + 数值顺序）
 
-- Format1 的点表列为 `Point, Fanout, Cap, Trans, Location, Incr, Path`，现在在 **lib 解析栈与 parser_chaos 中都不再依赖「列名起始位置」做定宽切分来决定数值列归属**。  
+- Format1 的点表列为 `Point, Fanout, Cap, Trans, Location, Incr, Path`，现在在 **lib 解析栈（含 parallel_extract）中都不再依赖「列名起始位置」做定宽切分来决定数值列归属**。  
 - 抽取时会先按行内容判断行类型（`clock` / `net` / `pin`），再基于「行类型 + 数值 token 顺序」映射列，例如：  
   - clock 行只映射 `Incr, Path`；  
   - net 行映射 `Fanout, Cap, Incr, Path`；  
@@ -260,7 +260,7 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 - port 行（launch/capture 第三行）现在明确输出并解析 `Delay`、`Time`、`trigger_edge`、`Description`：  
   - `trigger_edge` 来自 `Time` 与 `Description` 之间的 ` / ` 或 ` \ `；  
   - `Description` 规范为 `<port_name> (in)`（如 `dft_clk (in)`）。  
-- `lib extract` 与 `parser_chaos` 的 format2 解析规则已对齐为「行类型 + 数值 token 顺序 + 正则提取」，避免把列宽/空格漂移误判成数值截断。  
+- `lib extract` 与 `extract-chaos` 的 format2 解析规则已对齐为「行类型 + 数值 token 顺序 + 正则提取」，避免把列宽/空格漂移误判成数值截断。  
 - 说明：`test_results/.../debug/launch_path.csv` 现在也输出语义化字段，不再直接 dump 定宽切片结果。
 
 ---
@@ -291,7 +291,7 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
 
 ## lib 目录结构
 
-- `lib/parser_V2/`：**唯一**三种报告解析实现与基类
+- `lib/parser/`：**唯一**三种报告解析实现与基类
   - `time_parser_base.py`：`TimeParser`、`ParseOutput`、`splitLaunchByCommonPin`、定宽解析、`writeCsv`
   - `format1_parser.py` / `format2_parser.py` / `pt_parser.py`
   - `engine.py`：`create_timing_report_parser`、`detect_report_format`、`TimingParserV2`（YAML 布局）
@@ -300,12 +300,12 @@ python -m lib gen-report config/gen_report/format2.yaml -o output/custom.rpt
   - `lib/report_gen/base.py`：`TimingReportTemplate`
   - `lib/report_gen/format1.py` / `format2.py` / `pt.py`
 - `lib/extract.py`：extract 子命令逻辑（解析 + 写 CSV）
-- `lib/parser_chaos/`：extract-chaos；解析器同 `parser_V2`，仅进程模型不同
+- `lib/parser/parallel_extract.py`：extract-chaos；解析器同 `extract`，仅进程模型不同
 - `lib/gen_pt_report_timing.py`：gen-pt 子命令逻辑（launch_path → report_timing TCL）
 - `lib/compare/`：compare 子命令实现；`lib/compare_path_summary.py` 为薄入口
 - `lib/cli.py`：统一入口与子命令分发；`lib/__main__.py` 调用 `run_cli()`
 
-测试与代码请 **`from lib.parser_V2.xxx import ...`** 引用解析器；根目录不再提供 `lib/format1_parser.py` 等薄包装。
+测试与代码请 **`from lib.parser.xxx import ...`** 引用解析器；根目录不再提供 `lib/format1_parser.py` 等薄包装。
 
 `scripts/` 下保留薄包装脚本，内部调用 `python -m lib <子命令>`，便于旧命令行习惯。
 

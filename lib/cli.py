@@ -7,7 +7,7 @@ from . import extract
 from . import compare_path_summary as compare_module
 from . import gen_pt_report_timing as gen_pt_module
 from . import log_util
-from .parser_chaos import runExtractChaos as runExtractChaosChaos
+from .parser.parallel_extract import runExtractChaos
 from .report_gen import run_gen_report as run_gen_report
 
 
@@ -24,7 +24,7 @@ def _ensure_subcommand(argv: list[str] | None) -> list[str]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Timing 报告工具链：extract（parser_V2 解析）→ gen-pt / compare / gen-report。"
+            "Timing 报告工具链：extract（lib.parser 解析）→ gen-pt / compare / gen-report。"
         )
     )
     subparsers = parser.add_subparsers(dest="command", help="子命令")
@@ -37,12 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="日志等级：brief=每步一行汇总；full=多行展开（默认：brief）",
     )
 
-    # extract：主入口，解析实现统一在 lib.parser_V2
+    # extract：主入口，解析实现统一在 lib.parser
     ext = subparsers.add_parser(
         "extract",
         parents=[parent],
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        help="从 Timing 报告抽取 CSV（parser_V2，供 gen-pt / compare 使用）",
+        help="从 Timing 报告抽取 CSV（lib.parser，供 gen-pt / compare 使用）",
         description=(
             "读取一份 Timing 文本报告，写出与下游工具约定好的 CSV 集合。\n\n"
             "默认输出目录下文件：\n"
@@ -97,10 +97,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="分片模式下额外合并生成 launch_path.csv",
     )
 
-    # extract-chaos：与 extract 相同解析器（parser_V2），多进程队列吞吐更高
+    # extract-chaos：与 extract 相同解析器（lib.parser），多进程队列吞吐更高
     exC = subparsers.add_parser(
         "extract-chaos",
-        help="多进程抽取：1 分割器 + N Worker，解析与 extract 一致（parser_V2）",
+        help="多进程抽取：1 分割器 + N Worker，解析与 extract 一致（lib.parser）",
         parents=[parent],
     )
     exC.add_argument("input_rpt", help="输入 timing 报告文件路径")
@@ -289,7 +289,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     if args.command == "extract":
         return extract.runExtract(args)
     if args.command == "extract-chaos":
-        return runExtractChaosChaos(
+        return runExtractChaos(
             report_path=args.input_rpt,
             output_dir=args.output_dir,
             format_key=args.format,

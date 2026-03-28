@@ -24,9 +24,12 @@ class TestComparePointMetricAlias(unittest.TestCase):
             }
         ]
         html = buildPointSegmentHtml("Launch", rows_g, rows_t)
-        self.assertIn("<th colspan='3'>Incr</th>", html)
-        self.assertIn("<th colspan='3'>Time</th>", html)
-        self.assertIn("<th>G</th><th>T</th><th>Δ</th>", html)
+        self.assertIn("<th colspan='3' scope='colgroup'>Incr</th>", html)
+        self.assertIn("<th colspan='3' scope='colgroup'>Time</th>", html)
+        self.assertIn("<th scope='col'>G</th><th scope='col'>T</th><th scope='col'>Δ</th>", html)
+        self.assertIn("class='point-compare-wrap'", html)
+        self.assertIn("<thead>", html)
+        self.assertIn("<tbody>", html)
         self.assertNotIn("StepDelay(Incr/Delay)", html)
         self.assertNotIn("PathTime(Path/Time)", html)
         self.assertNotIn("<th colspan='3'>Type</th>", html)

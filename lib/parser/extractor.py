@@ -1,4 +1,4 @@
-"""parser_V2 字段抽取器。"""
+"""lib.parser 字段抽取器。"""
 from __future__ import annotations
 
 import re

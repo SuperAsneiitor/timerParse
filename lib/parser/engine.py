@@ -1,4 +1,4 @@
-"""parser_V2 解析引擎。
+"""lib.parser 解析引擎。
 
 - TimingParserV2：基于 YAML 布局的轻量结构化解析（parse_text → ParseResult）。
 - create_timing_report_parser：与 lake extract / gen-pt / 对比流水线对齐的完整解析器（TimeParser）。

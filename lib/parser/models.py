@@ -1,4 +1,4 @@
-"""parser_V2 数据模型。"""
+"""lib.parser 数据模型。"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

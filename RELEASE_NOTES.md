@@ -1,13 +1,15 @@
 # Release Notes
 
-## [Unreleased] - 文档与架构同步（2026-03-28）
+## [Unreleased] - 解析包归一与文档同步（2026-03-28）
 
 ### 概要
-- **解析**：统一在 **`lib/parser_V2`**（`TimeParser` 子类 + `create_timing_report_parser`）；删除 **`lib/parsers/`** 及根目录 `lib/format1_parser.py` 等薄转发。
-- **extract-chaos**：Worker 使用与 **`extract`** 相同的 **parser_V2**；移除 chaos 内重复的 `parser_format*.py` / `utils.py`；CSV 列与 `path_summary` 与 **`TimeParser.summary_columns`** 对齐。
-- **实验包**：删除 **`lib/parser_chaos_V2/`** 及 `tests/test_parser_chaos_v2.py`。
-- **文档**：重建 **`README.md`**（UTF-8 简体中文）；新增 **`docs/ARCHITECTURE.md`**；更新 **`docs/parser_chaos.md`**、**`PARSE_LAYOUTS.md`**、**`README_legacy.md`**、**`SESSION_MIGRATION.md`**、**`FORMAT_VALIDATION.md`**、**`PT_REPORT_REUSE_TEMPLATE.md`**。
-- **格式2**：net 行 Cap 后单位 **`xf`** 与 **`xd`** 同样从描述中剥离（与 extract/chaos 行为一致）。
+- **包路径**：目录 **`lib/parser_V2/`** 更名为 **`lib/parser/`**；导入统一为 **`lib.parser`**，物理路径为 **`lib/parser/`**。
+- **单一解析实现**：Timing 解析只保留 **`lib/parser`**（`TimeParser` 子类 + `create_timing_report_parser` 等）；历史 **`lib/parsers/`** 及根目录薄转发已移除（见更早版本说明）。
+- **多进程抽取**：删除独立包 **`lib/parser_chaos/`**，逻辑并入 **`lib/parser/parallel_extract.py`**（`runExtractParallel` / `runExtractChaos`）；CLI **`extract-chaos`** 与 **`scripts/run_extract_chaos.py`** 均调用该模块，CSV schema 与 **`extract`** 一致。
+- **compare 详情页**：**`lib/compare/path_detail_html.py`** 中 Launch/Capture **逐点对比**表使用 **`thead`/`tbody` + `position: sticky`** 与限高滚动容器，长路径浏览时双层表头保持可见。
+- **实验包（历史）**：曾删除 **`lib/parser_chaos_V2/`** 及 `tests/test_parser_chaos_v2.py`。
+- **文档**：更新 **`README.md`**、**`docs/ARCHITECTURE.md`**、**`docs/extract_parallel.md`**（替代原 **`docs/parser_chaos.md`**）、**`PARSE_LAYOUTS.md`**、**`README_legacy.md`**、**`SESSION_MIGRATION.md`**、**`FORMAT_VALIDATION.md`**、**`PT_REPORT_REUSE_TEMPLATE.md`**、**`.cursor/skills`** 等。
+- **格式2**：net 行 Cap 后单位 **`xf`** / **`xd`** 从描述中剥离的行为与 extract / extract-chaos 一致。
 
 ---
 
@@ -17,7 +19,7 @@
 - **日期**：2026-03-19
 
 ### 更新原因与概要
-- 发布 1.0.0 版本：compare 与 parser_chaos 流程进一步产品化，支持 HTML 静态分页 drill-down，以及统一 CLI 接入口与 csh `lake` 命令入口。
+- 发布 1.0.0 版本：compare 与 extract-chaos（多进程抽取）流程进一步产品化，支持 HTML 静态分页 drill-down，以及统一 CLI 接入口与 csh `lake` 命令入口。
 
 ### 变更
 - compare（path_summary 对比）增强：
@@ -30,8 +32,8 @@
     - `--no-sort-abs`
     - `--detail-scope`
 
-- parser_chaos CLI 集成：
-  - `lib/cli.py` 新增子命令 `extract-chaos`，内部调用 `lib.parser_chaos.runExtractChaos`。
+- extract-chaos CLI 集成：
+  - `lib/cli.py` 子命令 `extract-chaos`，内部调用 `lib.parser.parallel_extract.runExtractChaos`。
   - 默认输出目录：`output_parser_chaos`（与原脚本一致）。
 
 - 产品命令入口：

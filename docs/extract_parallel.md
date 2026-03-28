@@ -1,10 +1,10 @@
-# extract-chaos（`lib/parser_chaos`）流水线
+# extract-chaos（`lib.parser.parallel_extract`）流水线
 
 ## 概述
 
-`lib/parser_chaos` 提供 **「1 个分割器进程 + N 个 Worker 进程 + 队列」** 的 Timing 报告抽取流水线。
+`lib/parser/parallel_extract.py` 提供 **「1 个分割器进程 + N 个 Worker 进程 + 队列」** 的 Timing 报告抽取流水线。
 
-**解析实现与 `lake extract` 完全相同**：Worker 内使用 **`lib.parser_V2.engine.create_timing_report_parser`**，对每块 path 调用 **`TimeParser.parseOnePath`**。与主路径的差异**仅在于进程与任务调度模型**，不维护第二套解析代码。
+**解析实现与 `lake extract` 完全相同**：Worker 内使用 **`lib.parser.engine.create_timing_report_parser`**，对每块 path 调用 **`TimeParser.parseOnePath`**。与主路径的差异**仅在于进程与任务调度模型**，不维护第二套解析代码。
 
 ## 架构
 
@@ -14,12 +14,12 @@
 
 ## 与 `extract` 的差异
 
-| 项目 | `extract`（`lib/extract.py`） | `parser_chaos` |
-|------|------------------------------|----------------|
+| 项目 | `extract`（`lib/extract.py`） | `parallel_extract` |
+|------|------------------------------|---------------------|
 | 分割 | 主进程 `scanPathBlocks` 得到全量列表 | 独立分割器进程边读边入队 |
 | 解析 | 主进程或 `Pool.map` | N 个独立 Worker 从队列取块 |
 | 任务分配 | 静态列表分片 | 队列动态分配 |
-| 解析器 | `parser_V2` | **同一** `parser_V2` |
+| 解析器 | `lib.parser` | **同一** `lib.parser` |
 
 ## 用法
 
@@ -28,8 +28,8 @@
 python -m lib extract-chaos path/to/report.rpt -o output_parser_chaos -f auto -j 4
 
 # 或在代码中调用
-from lib.parser_chaos import runExtractChaos
-runExtractChaos(
+from lib.parser.parallel_extract import runExtractParallel
+runExtractParallel(
     report_path,
     output_dir,
     format_key="format2",  # format1 / format2 / pt / apr（apr 入口会规范为 format1）
@@ -37,26 +37,17 @@ runExtractChaos(
 )
 ```
 
-- **格式**：`auto` 时由 **`detect_report_format`**（与 `parser_V2` 一致）识别。
-- **`-j`**：Worker 数量（默认 3）；大文件可适当增大，注意内存与句柄。
+兼容旧名：`runExtractChaos`、`detectFormatFromReport` 与 `parallel_extract` 中同名符号等价。
+
+- **格式**：`auto` 时由 **`detect_report_format`**（与 `lib.parser` 一致）识别。
+- **`-j`**：Worker 数量（CLI `extract-chaos` 默认 3）；大文件可适当增大，注意内存与句柄。
 - **分片**：`-p N`、`-m` 与 `extract` 语义相同。
 
-若仓库中仍有 **`scripts/run_extract_chaos.py`**，其内部应转发到 `python -m lib extract-chaos`（以脚本实际实现为准）。
+**`scripts/run_extract_chaos.py`** 内部调用 `lib.parser.parallel_extract.runExtractChaos`，与上述 CLI 行为一致。
 
-## 目录结构（当前）
+## 模块位置
 
-```
-lib/parser_chaos/
-  __init__.py      # runExtractChaos、detectFormatFromReport、ParseOutput、格式常量
-  constants.py     # 格式键、队列哨兵
-  models.py        # ParseOutput（聚合用容器）
-  splitter.py      # 分割器进程与各版式切分
-  worker.py        # Worker：create_timing_report_parser + parseOnePath
-  aggregator.py    # 聚合；splitLaunchByCommonPin 委托 TimeParser
-  run.py           # 编排、写 CSV；_csv_layout 与 extract 列对齐
-```
-
-**已移除**（逻辑已并入 `parser_V2`）：`parser_format1.py`、`parser_format2.py`、`parser_pt.py`、`utils.py`。
+实现集中在单文件 **`lib/parser/parallel_extract.py`**（分割、Worker、聚合、写 CSV）。
 
 ## 输出文件
 

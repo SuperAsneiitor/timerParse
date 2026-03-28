@@ -71,8 +71,8 @@ lake extract path/to/report.rpt -o path/to/out
 
 | 子命令 | 典型用途 |
 |--------|----------|
-| `extract` | 解析**一份** timing 报告 → 输出多份 CSV（**解析实现：`lib/parser_V2`**） |
-| `extract-chaos` | **同一解析器**（parser_V2），**多进程队列**吞吐更高；大文件可分片输出 |
+| `extract` | 解析**一份** timing 报告 → 输出多份 CSV（**解析实现：`lib/parser`**） |
+| `extract-chaos` | **同一解析器**（`lib.parser`），**多进程队列**吞吐更高；大文件可分片输出 |
 | `gen-pt` | 从 `launch_path.csv` 生成 PrimeTime **`report_timing` TCL** |
 | `compare` | 对比两份 **`path_summary.csv`**（golden vs test），可选 HTML/图表 |
 | `gen-report` | 按 **YAML** 生成合成 timing 报告（`.rpt`） |
@@ -107,7 +107,7 @@ lake extract input/report.rpt -o output/extract -j 4 -p 10000 -m
 lake extract-chaos input/report.rpt -o output/chaos -f auto -j 4
 ```
 
-说明见 [docs/parser_chaos.md](docs/parser_chaos.md)。
+说明见 [docs/extract_parallel.md](docs/extract_parallel.md)。
 
 ### 6.3 生成 PrimeTime `report_timing` TCL
 
@@ -125,7 +125,7 @@ lake gen-pt output/extract/launch_path.csv -o output/report_timing.tcl --output-
 lake compare -g golden/path_summary.csv -t test/path_summary.csv -o output/compare/result.csv --no-charts --no-html
 ```
 
-需要汇总页/图表/详情页时，去掉 `--no-charts`、`--no-html`，并按 `-h` 附加 `--golden-launch-csv` 等。
+需要汇总页/图表/详情页时，去掉 `--no-charts`、`--no-html`，并按 `-h` 附加 `--golden-launch-csv` 等。详情页 **`paths/path_*.html`** 内「Launch/Capture path 逐点对比」表格在纵向滚动时**表头置顶**（sticky），便于查看长路径。
 
 ### 6.5 用 YAML 生成合成报告
 
@@ -141,7 +141,7 @@ lake gen-report config/gen_report/format2.yaml -o output/gen.rpt -s 42
 |------|------|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **`lib/` 模块划分**与数据流 |
 | [docs/FORMAT_VALIDATION.md](docs/FORMAT_VALIDATION.md) | 格式、字段、校验约定 |
-| [docs/parser_chaos.md](docs/parser_chaos.md) | extract-chaos 流水线 |
+| [docs/extract_parallel.md](docs/extract_parallel.md) | extract-chaos 流水线 |
 | [docs/PARSE_LAYOUTS.md](docs/PARSE_LAYOUTS.md) | `config/parse_layouts` 与解析辅助 |
 | [docs/SESSION_MIGRATION.md](docs/SESSION_MIGRATION.md) | 会话/环境迁移提示 |
 | [docs/README_legacy.md](docs/README_legacy.md) | 旧版 README 全文（参数表、YAML 细节、目录结构等） |

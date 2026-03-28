@@ -1,6 +1,6 @@
 import unittest
 
-from lib.parser_V2 import TimingParserV2
+from lib.parser import TimingParserV2
 
 
 SAMPLE = """

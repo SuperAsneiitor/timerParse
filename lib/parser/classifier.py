@@ -1,4 +1,4 @@
-"""parser_V2 行分类器。"""
+"""lib.parser 行分类器。"""
 from __future__ import annotations
 
 import re

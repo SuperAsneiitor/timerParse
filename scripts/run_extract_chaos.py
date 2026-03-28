@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-使用 parser_chaos 流水线解析 Timing 报告并输出 CSV。
+使用 lib.parser 多进程队列流水线解析 Timing 报告并输出 CSV（与 `python -m lib extract-chaos` 相同）。
 
 用法：
   python scripts/run_extract_chaos.py <report.rpt> -o <output_dir> [--format auto|format1|format2|pt] [-j N]
@@ -16,7 +16,7 @@ _root = Path(__file__).resolve().parents[1]
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
-from lib.parser_chaos import runExtractChaos
+from lib.parser.parallel_extract import runExtractChaos
 
 
 def main() -> int:
@@ -28,7 +28,7 @@ def main() -> int:
         pass
 
     parser = argparse.ArgumentParser(
-        description="parser_chaos：1 个分割器 + N 个解析器进程，队列式解析 Timing 报告并输出 CSV。"
+        description="extract-chaos：1 个分割器 + N 个解析器进程，队列式解析 Timing 报告并输出 CSV（lib.parser）。"
     )
     parser.add_argument("input_rpt", help="输入 timing 报告文件路径")
     parser.add_argument("-o", "--output-dir", default="output_parser_chaos", help="输出目录（默认：output_parser_chaos）")

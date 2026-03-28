@@ -1,5 +1,5 @@
 """
-Timing 报告解析基类与通用数据结构（lib.parser_V2 组成部分）。
+Timing 报告解析基类与通用数据结构（lib.parser 组成部分）。
 
 提供 TimeParser / ParseOutput、launch 按 common pin 拆分、固定列宽解析与 CSV 写出；
 由 extract 子命令与 create_timing_report_parser 使用。

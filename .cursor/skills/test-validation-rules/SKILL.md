@@ -10,7 +10,7 @@ description: Test and validation output conventions for timerExtract. Use when w
 All test and validation artifacts **must** be written under **timestamped directories** only:
 
 - **Base path**: `test_results/`
-- **Pattern**: `test_results/<prefix>_YYYYMMDD_HHMMSS/` (e.g. `validation_flow_20260316_105205`, `parser_chaos_validation_20260316_100327`)
+- **Pattern**: `test_results/<prefix>_YYYYMMDD_HHMMSS/` (e.g. `validation_flow_20260316_105205`, `extract_parallel_validation_20260316_100327`)
 - **Do not** create non-timestamped folders or files under `test_results/` (e.g. avoid `test_results/tmp_*`, `test_results/format2_launch_sep`, or fixed-name `.rpt` files for persistent storage).
 
 One-off or ad-hoc runs must also use a timestamped subdir, for example:

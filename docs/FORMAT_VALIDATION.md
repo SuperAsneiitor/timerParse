@@ -81,8 +81,8 @@ table:
 - PT 生成对齐 raw 风格：`clock network delay (ideal)`、capture 段保留关键约束行、`input_pin/output_pin` 的 `Derate` 输出为 4 位小数（例如 `1.1000`）。
 - 新模板 schema 支持 `extends` + `base.yaml` + format override，`row_type_profiles` 可收敛 `when_type` 配置。
 - 新增固定验证脚本 `scripts/run_validation_flow.py`，默认强制时间戳目录输出。
-- PT / Format1 报告的点表解析从「依赖列名起始位置的定宽切分」升级为「按行类型 + 数值 token 顺序补齐关键数值列」，其中 **Incr/Path 等累加相关列只依赖行内数值 token 顺序恢复，不再受列起始位置影响，Cap/Trans/Fanout 等仍结合定宽解析**；**extract** 与 **extract-chaos** 共用 **lib/parser_V2**，数值行为一致。
-- Format2 解析补强：支持 net 行 `Cap` 后单位 **`xd` / `xf`**（含分词形式）与 pin 行坐标块等；**parser_V2** 内 format2 解析统一处理表头/分隔线，避免列切片撕裂。
+- PT / Format1 报告的点表解析从「依赖列名起始位置的定宽切分」升级为「按行类型 + 数值 token 顺序补齐关键数值列」，其中 **Incr/Path 等累加相关列只依赖行内数值 token 顺序恢复，不再受列起始位置影响，Cap/Trans/Fanout 等仍结合定宽解析**；**extract** 与 **extract-chaos** 共用 **lib/parser**，数值行为一致。
+- Format2 解析补强：支持 net 行 `Cap` 后单位 **`xd` / `xf`**（含分词形式）与 pin 行坐标块等；**lib.parser** 内 format2 解析统一处理表头/分隔线，避免列切片撕裂。
 - Format2 的 port 行规则补齐：launch/capture 第三行 port 必须包含 `Delay`、`Time`、`Description`，并在 `Time` 与 `Description` 之间带边沿符号（`/` 或 `\`）；解析输出中 `trigger_edge` 必须为 `r/f`，`Description` 必须为 `<port_name> (in)`。
 - `scripts/validate_extract_results.py` 新增 format2 port 专项校验：自动检查 launch/capture 中 port 行的 `Delay/Time` 数值合法性、`trigger_edge` 是否为 `r/f`、`Description` 是否符合 `<name> (in)` 约束，避免回归。
 - `path_summary.csv` 新增 `clock_reconvergence_pessimism`、`clock_uncertainty` 两列，用于记录每条 path 的 clock reconvergence pessimism 与 clock uncertainty 增量；原先的 `uncertainty` 列已移除，统一使用 `clock_uncertainty`。

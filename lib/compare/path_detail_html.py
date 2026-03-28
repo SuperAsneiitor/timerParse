@@ -232,18 +232,16 @@ def buildPointSegmentHtml(
     rows_g, rows_t = _alignRowsByPointSequence(rows_g, rows_t)
     n = max(len(rows_g), len(rows_t))
     header_top = (
-        "<tr><th rowspan='2'>idx</th><th rowspan='2'>Point (G)</th><th rowspan='2'>Point (T)</th>"
+        "<tr><th rowspan='2' scope='col'>idx</th>"
+        "<th rowspan='2' scope='col'>Point (G)</th>"
+        "<th rowspan='2' scope='col'>Point (T)</th>"
         + "".join(
-            f"<th colspan='3'>{html_module.escape(label)}</th>"
+            f"<th colspan='3' scope='colgroup'>{html_module.escape(label)}</th>"
             for label, _ in _POINT_METRIC_SPECS
         )
         + "</tr>"
     )
-    header_sub = (
-        "<tr>"
-        + "".join("<th>G</th><th>T</th><th>Δ</th>" for _ in _POINT_METRIC_SPECS)
-        + "</tr>"
-    )
+    header_sub = "<tr>" + "".join("<th scope='col'>G</th><th scope='col'>T</th><th scope='col'>Δ</th>" for _ in _POINT_METRIC_SPECS) + "</tr>"
     body: List[str] = []
     for i in range(n):
         rg = rows_g[i] if i < len(rows_g) else {}
@@ -251,7 +249,7 @@ def buildPointSegmentHtml(
         pg = _normalizePointForCompare(str(rg.get("point") or ""))
         pt = _normalizePointForCompare(str(rt.get("point") or ""))
         mismatch = pg != pt and (pg or pt)
-        row_style = " style='background:#fff3cd'" if mismatch else ""
+        row_class = " class='point-compare-row-mismatch'" if mismatch else ""
         cells = [
             f"<td>{i}</td>",
             f"<td>{html_module.escape(pg)}</td>",
@@ -263,13 +261,13 @@ def buildPointSegmentHtml(
             cells.append(f"<td>{html_module.escape(_fmt(gv))}</td>")
             cells.append(f"<td>{html_module.escape(_fmt(tv))}</td>")
             cells.append(f"<td>{html_module.escape(_numDiff(_fmt(gv), _fmt(tv)))}</td>")
-        body.append(f"<tr{row_style}>{''.join(cells)}</tr>")
+        body.append(f"<tr{row_class}>{''.join(cells)}</tr>")
     return (
         f"<h2>{html_module.escape(title)}</h2>"
         "<p>黄色行表示同索引下 Point 文本不一致（结构或拓扑可能不同）。</p>"
-        "<div style='overflow-x:auto'>"
-        "<table>"
-        f"{header_top}{header_sub}{''.join(body)}"
+        "<div class='point-compare-wrap'>"
+        "<table class='point-compare'>"
+        f"<thead>{header_top}{header_sub}</thead><tbody>{''.join(body)}</tbody>"
         "</table></div>"
     )
 
@@ -366,6 +364,63 @@ def generatePathDetailPage(
     table {{ border-collapse: collapse; width: 100%; margin-bottom: 18px; }}
     th, td {{ border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; }}
     th {{ background: #f3f3f3; text-align: left; }}
+
+    /* 逐点对比：独立滚动区 + 双层表头 sticky（border-collapse: separate 利于 sticky 兼容） */
+    .point-compare-wrap {{
+      overflow: auto;
+      max-height: min(80vh, 900px);
+      margin-bottom: 18px;
+      -webkit-overflow-scrolling: touch;
+    }}
+    .point-compare {{
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      margin-bottom: 0;
+    }}
+    .point-compare th,
+    .point-compare td {{
+      border-style: solid;
+      border-color: #ccc;
+      border-width: 0 1px 1px 0;
+      padding: 6px 8px;
+      font-size: 12px;
+      vertical-align: top;
+    }}
+    .point-compare tbody td {{
+      background: #fff;
+    }}
+    .point-compare tbody tr.point-compare-row-mismatch td {{
+      background: #fff3cd;
+    }}
+    .point-compare thead tr:first-child th {{
+      border-top-width: 1px;
+    }}
+    .point-compare tr > :first-child {{
+      border-left-width: 1px;
+    }}
+    .point-compare thead th {{
+      background: #f3f3f3;
+      text-align: left;
+      position: sticky;
+      z-index: 2;
+    }}
+    /* 第一行分组表头：贴容器/视口顶 */
+    .point-compare thead tr:first-child th {{
+      top: 0;
+      z-index: 3;
+      box-shadow: 0 1px 0 #bbb;
+    }}
+    /* idx / Point 两列跨两行，压在分组表头之上 */
+    .point-compare thead tr:first-child th[rowspan='2'] {{
+      z-index: 5;
+    }}
+    /* 第二行 G/T/Δ：叠在第一行之下沿 */
+    .point-compare thead tr:nth-child(2) th {{
+      top: 34px;
+      z-index: 4;
+      box-shadow: 0 1px 0 #bbb;
+    }}
   </style>
 </head>
 <body>

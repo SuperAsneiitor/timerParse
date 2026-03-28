@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.parser_V2.layout_runtime import LayoutRuntime
+from lib.parser.layout_runtime import LayoutRuntime
 
 
 class TestLayoutRuntime(unittest.TestCase):

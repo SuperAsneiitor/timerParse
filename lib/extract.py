@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 
 from . import log_util
-from .parser_V2.engine import create_timing_report_parser, detect_report_format
-from .parser_V2.time_parser_base import ParseOutput, TimeParser
+from .parser.engine import create_timing_report_parser, detect_report_format
+from .parser.time_parser_base import ParseOutput, TimeParser
 
 # 抽取结果中保留的语义列（与格式无关的统一列集合）
 SEMANTIC_POINT_ATTRS = [

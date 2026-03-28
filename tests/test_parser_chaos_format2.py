@@ -1,9 +1,9 @@
-"""parser_chaos format2 语义解析测试。"""
+"""format2 解析器 net 行语义测试（与 extract / parallel_extract 共用 lib.parser）。"""
 from __future__ import annotations
 
 import unittest
 
-from lib.parser_V2.format2_parser import Format2Parser
+from lib.parser.format2_parser import Format2Parser
 
 
 def _buildPath(net_line: str) -> str:

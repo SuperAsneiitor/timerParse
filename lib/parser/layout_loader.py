@@ -1,4 +1,4 @@
-"""parser_V2 布局配置加载。"""
+"""lib.parser 布局配置加载。"""
 from __future__ import annotations
 
 from functools import lru_cache

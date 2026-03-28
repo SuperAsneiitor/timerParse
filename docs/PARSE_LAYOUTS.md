@@ -119,10 +119,10 @@ python scripts/run_validation_flow.py --jobs 4
 
 ## 6. 代码入口（供开发者）
 
-- 配置加载：`lib/parser_V2/layout_config.py`（`config/parse_layouts/*.yaml`）
-- 运行时：`lib/parser_V2/layout_runtime.py`
+- 配置加载：`lib/parser/layout_config.py`（`config/parse_layouts/*.yaml`）
+- 运行时：`lib/parser/layout_runtime.py`
 - 接入点（完整解析与定宽逻辑）：
-  - `lib/parser_V2/format1_parser.py`（`_parseNumericColumns` 等）
-  - `lib/parser_V2/pt_parser.py`
-  - `lib/parser_V2/format2_parser.py`（clock/constraint/required/arrival/slack/port 等）
+  - `lib/parser/format1_parser.py`（`_parseNumericColumns` 等）
+  - `lib/parser/pt_parser.py`
+  - `lib/parser/format2_parser.py`（clock/constraint/required/arrival/slack/port 等）
 
