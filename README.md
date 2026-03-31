@@ -243,6 +243,13 @@ python -m unittest tests.test_format1_parser tests.test_format2_parser tests.tes
 | `--detail-scope` | `none` \| `first_page`（默认）\| `all` \| `topN` |
 | `--detail-top-n N` | `detail-scope=topN` 时生成前 N 条详情 |
 
+`compare` 的统计输出（`--stats-json`）新增 `error_range_stats`：
+- `arrival_time_ratio`、`required_time_ratio`：按误差绝对值分段 `[0,5)`, `[5,10)`, `[10,20)`, `[20,50)`, `>50`（单位 `%`），统计每段路径占比。
+- `slack_diff`：按误差绝对值分段 `[0,5)`, `[5,10)`, `[10,20)`, `>20`，统计每段路径占比。
+- HTML 报告中对应为“误差分桶占比统计”两张表：
+  - 一张合并展示 `arrival_time_ratio` 与 `required_time_ratio`
+  - 一张单独展示 `slack_diff`
+
 ### 10.6 `gen-report`
 
 | 参数 | 说明 |

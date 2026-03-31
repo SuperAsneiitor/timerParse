@@ -90,6 +90,10 @@ table:
   - PT/format1：关键词在行首，数值在关键词后；从关键词后面的数值中取倒数第二个作为增量（Incr）；  
   - format2：关键词在行尾 Description 中，数值在左侧 Delay/Time 列；若关键词后无数值，则从关键词前的整行数值中取倒数第二个作为增量（Delay）。
 - PT 生成器与解析器对 capture 段进行了对齐：capture_path 的最后一个点为 Endpoint 的时钟端 CK，`clock reconvergence pessimism` 与 `clock uncertainty` 只出现在 summary 段，不再混入 capture 点表。
+- compare 统计新增固定误差分桶（`error_range_stats`）：
+  - `arrival_time_ratio` / `required_time_ratio`：`[0,5)`, `[5,10)`, `[10,20)`, `[20,50)`, `>50`（按绝对值，单位 `%`）
+  - `slack_diff`：`[0,5)`, `[5,10)`, `[10,20)`, `>20`（按绝对值）
+  - HTML 汇总页按转置方式展示分桶占比：`arrival/required` 同表、`slack_diff` 单表。
 
 ### 推荐命令（不覆盖输出）
 

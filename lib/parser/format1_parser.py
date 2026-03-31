@@ -20,12 +20,76 @@ class Format1Parser(TimeParser):
         super().__init__(attrs_order, attrs_by_type)
         self._layout_runtime = LayoutRuntime("format1")
 
-    default_attrs_order = ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"]
+    default_attrs_order = [
+        "Fanout",
+        "Derate",
+        "DerateA",
+        "DerateB",
+        "Cap",
+        "D-Trans",
+        "TransMean",
+        "TransSensit",
+        "TransValue",
+        "Trans",
+        "Location",
+        "Delta",
+        "IncrMean",
+        "IncrSensit",
+        "IncrValue",
+        "Incr",
+        "PathMean",
+        "PathSensit",
+        "PathValue",
+        "Path",
+        "trigger_edge",
+    ]
     skip_first_rows = 2
     default_attrs_by_type = {
         "net": ["Fanout"],
-        "input_pin": ["Derate", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
-        "output_pin": ["Derate", "Cap", "Trans", "Location", "Incr", "Path", "trigger_edge"],
+        "input_pin": [
+            "Derate",
+            "DerateA",
+            "DerateB",
+            "Cap",
+            "D-Trans",
+            "TransMean",
+            "TransSensit",
+            "TransValue",
+            "Trans",
+            "Location",
+            "Delta",
+            "IncrMean",
+            "IncrSensit",
+            "IncrValue",
+            "Incr",
+            "PathMean",
+            "PathSensit",
+            "PathValue",
+            "Path",
+            "trigger_edge",
+        ],
+        "output_pin": [
+            "Derate",
+            "DerateA",
+            "DerateB",
+            "Cap",
+            "D-Trans",
+            "TransMean",
+            "TransSensit",
+            "TransValue",
+            "Trans",
+            "Location",
+            "Delta",
+            "IncrMean",
+            "IncrSensit",
+            "IncrValue",
+            "Incr",
+            "PathMean",
+            "PathSensit",
+            "PathValue",
+            "Path",
+            "trigger_edge",
+        ],
     }
 
     _output_pin_names = frozenset({"Q", "Z", "ZN", "ZP"})
@@ -86,9 +150,9 @@ class Format1Parser(TimeParser):
         capture_rows: list[dict[str, Any]] = []
 
         self._fillMetaFromHeader(lines, meta)
-        col_pos, table_start = self._findTableStart(lines)
-        self._parseLaunchSegment(lines, meta, col_pos, table_start, launch_rows)
-        self._parseCaptureSegment(lines, meta, col_pos, table_start, capture_rows)
+        table_info, table_start = self._findTableStart(lines)
+        self._parseLaunchSegment(lines, meta, table_info, table_start, launch_rows)
+        self._parseCaptureSegment(lines, meta, table_info, table_start, capture_rows)
         self._fillRequiredAndArrival(lines, meta)
         self._fillUncertainty(lines, meta)
 
@@ -173,20 +237,163 @@ class Format1Parser(TimeParser):
                 meta["slack"] = vm.group(1).strip() if vm else ""
                 break
 
-    def _findTableStart(self, lines: list[str]) -> tuple[dict[str, int], int]:
-        """    Point                 (col_pos, table_start_row) """
+    def _findTableStart(self, lines: list[str]) -> tuple[dict[str, Any], int]:
+        """定位经典/LVF 点表头，返回表格模式与数据起始行。"""
+        lvf_info, lvf_start = self._findLvfTableStart(lines)
+        if lvf_info:
+            return lvf_info, lvf_start
+        classic_info, classic_start = self._findClassicTableStart(lines)
+        return classic_info, classic_start
+
+    def _findClassicTableStart(self, lines: list[str]) -> tuple[dict[str, Any], int]:
+        """定位传统 format1 表头。"""
         col_pos: dict[str, int] = {}
         table_start = 0
+        classic_attrs = ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path"]
         for idx, line in enumerate(lines):
             if self._re_point_header.match(line):
-                col_pos = self.extractColumnPositions(line, self.attrs_order)
+                col_pos = self.extractColumnPositions(line, classic_attrs)
                 if "Location" in col_pos:
                     table_start = idx + 1
                     if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
                         table_start += 1
-                    break
-                col_pos = {}
-        return col_pos, table_start
+                    return {"mode": "classic", "col_pos": col_pos}, table_start
+        return {"mode": "classic", "col_pos": {}}, table_start
+
+    def _findLvfTableStart(self, lines: list[str]) -> tuple[dict[str, Any], int]:
+        """定位 LVF 双层表头（支持“分组行在上、属性行在下”的正确格式）。"""
+        for idx in range(len(lines) - 1):
+            line_a = lines[idx]
+            line_b = lines[idx + 1]
+
+            # 正确格式：上一行是 Trans/Incr/Path 分组，下一行是 Fanout/Derate/.../Mean/Sensit/Value
+            if self._isLvfGroupHeaderLine(line_a) and self._isLvfAttrHeaderLine(line_b):
+                col_pos = self._buildLvfColumnPositions(line_b)
+                if col_pos:
+                    table_start = idx + 2
+                    if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
+                        table_start += 1
+                    return {"mode": "lvf", "col_pos": col_pos}, table_start
+
+            # 兼容历史反向格式：属性行在上、分组行在下
+            if self._isLvfAttrHeaderLine(line_a) and self._isLvfGroupHeaderLine(line_b):
+                col_pos = self._buildLvfColumnPositions(line_a)
+                if col_pos:
+                    table_start = idx + 2
+                    if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
+                        table_start += 1
+                    return {"mode": "lvf", "col_pos": col_pos}, table_start
+        return {}, 0
+
+    @staticmethod
+    def _isLvfGroupHeaderLine(line: str) -> bool:
+        text = (line or "").lower()
+        return ("trans" in text) and ("incr" in text) and ("path" in text)
+
+    @staticmethod
+    def _isLvfAttrHeaderLine(line: str) -> bool:
+        text = (line or "").lower()
+        if "fanout" not in text or "derate" not in text or "cap" not in text:
+            return False
+        return text.count("mean") >= 3 and text.count("sensit") >= 3 and text.count("value") >= 3
+
+    def _buildLvfColumnPositions(self, attr_line: str) -> dict[str, int]:
+        """根据 LVF 属性行构建固定列宽起始位置。"""
+        col_pos: dict[str, int] = {}
+        for src, dst in [
+            ("Fanout", "Fanout"),
+            ("Derate", "Derate"),
+            ("Cap", "Cap"),
+            ("DTrans", "D-Trans"),
+            ("Location", "Location"),
+            ("Delta", "Delta"),
+        ]:
+            idx = attr_line.find(src)
+            if idx >= 0:
+                col_pos[dst] = idx
+
+        means = [m.start() for m in re.finditer(r"Mean", attr_line)]
+        sensits = [m.start() for m in re.finditer(r"Sensit", attr_line)]
+        values = [m.start() for m in re.finditer(r"Value", attr_line)]
+        if min(len(means), len(sensits), len(values)) < 3:
+            return {}
+        groups = ["Trans", "Incr", "Path"]
+        for i, group in enumerate(groups):
+            col_pos[f"{group}Mean"] = means[i]
+            col_pos[f"{group}Sensit"] = sensits[i]
+            col_pos[f"{group}Value"] = values[i]
+        return col_pos
+
+    def _parseByPositions(self, line: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
+        """按列起始位置切分单行。"""
+        content = line.rstrip()
+        ordered = sorted(col_pos.items(), key=lambda item: item[1])
+        if not ordered:
+            return "", {}
+        point = content[: ordered[0][1]].strip()
+        attrs: dict[str, str] = {}
+        for i, (name, start) in enumerate(ordered):
+            end = ordered[i + 1][1] if i + 1 < len(ordered) else len(content)
+            value = content[start:end].strip() if start < end else ""
+            attrs[name] = "" if value == "-" else value
+        return point, attrs
+
+    @staticmethod
+    def _splitDerateValues(value: str) -> tuple[str, str]:
+        """拆分 LVF Derate 双值（a:b）；单值则仅返回第一个。"""
+        text = str(value or "").strip()
+        if not text:
+            return "", ""
+        if ":" not in text:
+            return text, ""
+        left, right = text.split(":", 1)
+        return left.strip(), right.strip()
+
+    def _parsePointAttrs(self, line: str, table_info: dict[str, Any], row_kind: str) -> tuple[str, Dict[str, str]]:
+        """按表格模式解析单行属性，并对 LVF 字段做兼容回填。"""
+        mode = str((table_info or {}).get("mode") or "classic")
+        col_pos = dict((table_info or {}).get("col_pos") or {})
+        if mode == "lvf":
+            point, raw_attrs = self._parseByPositions(line, col_pos)
+            attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
+            for key in ("Fanout", "Derate", "Cap", "D-Trans", "Location", "Delta"):
+                attrs[key] = raw_attrs.get(key, "")
+            for key in (
+                "TransMean",
+                "TransSensit",
+                "TransValue",
+                "IncrMean",
+                "IncrSensit",
+                "IncrValue",
+                "PathMean",
+                "PathSensit",
+                "PathValue",
+            ):
+                attrs[key] = raw_attrs.get(key, "")
+            attrs["Trans"] = attrs["TransValue"]
+            attrs["Incr"] = attrs["IncrValue"]
+            attrs["Path"] = attrs["PathValue"]
+            attrs["DerateA"], attrs["DerateB"] = self._splitDerateValues(attrs["Derate"])
+            return point, attrs
+
+        point, attrs = self.parseFixedWidthAttrs(line, col_pos, ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path"])
+        merged: Dict[str, str] = {name: "" for name in self.attrs_order}
+        for key, value in attrs.items():
+            merged[key] = value
+        if not row_kind:
+            if self._re_clock_start.match(line):
+                row_kind = "clock"
+            elif "(net)" in point:
+                row_kind = "net"
+            else:
+                row_kind = "pin"
+        smart_numeric = self._parseNumericColumns(line, col_pos, row_kind)
+        if smart_numeric:
+            for col, val in smart_numeric.items():
+                if val:
+                    merged[col] = val
+        merged["DerateA"], merged["DerateB"] = self._splitDerateValues(merged.get("Derate", ""))
+        return point, merged
 
     def _classify_row_kind(
         self,
@@ -245,7 +452,7 @@ class Format1Parser(TimeParser):
         self,
         lines: list[str],
         meta: dict[str, Any],
-        col_pos: dict[str, int],
+        table_info: dict[str, Any],
         table_start: int,
         launch_rows: list[dict[str, Any]],
     ) -> None:
@@ -260,20 +467,12 @@ class Format1Parser(TimeParser):
                 continue
             if in_launch and self._re_data_arrival.match(line):
                 for k in range(launch_start_idx, j + 1):
-                    raw_point, base_attrs = self.parseFixedWidthAttrs(
-                        lines[k], col_pos, self.attrs_order
+                    row_kind = self._classify_row_kind(
+                        "", lines[k], k - launch_start_idx, in_launch=True
                     )
+                    raw_point, attrs = self._parsePointAttrs(lines[k], table_info, row_kind)
                     if not raw_point:
                         continue
-                    row_kind = self._classify_row_kind(
-                        raw_point, lines[k], k - launch_start_idx, in_launch=True
-                    )
-                    smart_numeric = self._parseNumericColumns(lines[k], col_pos, row_kind)
-                    attrs = base_attrs.copy()
-                    if smart_numeric:
-                        for col, val in smart_numeric.items():
-                            if val:
-                                attrs[col] = val
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
@@ -294,7 +493,7 @@ class Format1Parser(TimeParser):
         self,
         lines: list[str],
         meta: dict[str, Any],
-        col_pos: dict[str, int],
+        table_info: dict[str, Any],
         table_start: int,
         capture_rows: list[dict[str, Any]],
     ) -> None:
@@ -313,20 +512,12 @@ class Format1Parser(TimeParser):
                 continue
             if in_capture and self._re_library_setup.match(line):
                 for k in range(capture_start_idx, j):
-                    raw_point, base_attrs = self.parseFixedWidthAttrs(
-                        lines[k], col_pos, self.attrs_order
+                    row_kind = self._classify_row_kind(
+                        "", lines[k], k - capture_start_idx, in_launch=False
                     )
+                    raw_point, attrs = self._parsePointAttrs(lines[k], table_info, row_kind)
                     if not raw_point:
                         continue
-                    row_kind = self._classify_row_kind(
-                        raw_point, lines[k], k - capture_start_idx, in_launch=False
-                    )
-                    smart_numeric = self._parseNumericColumns(lines[k], col_pos, row_kind)
-                    attrs = base_attrs.copy()
-                    if smart_numeric:
-                        for col, val in smart_numeric.items():
-                            if val:
-                                attrs[col] = val
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
@@ -368,6 +559,8 @@ class Format1Parser(TimeParser):
             edge = tokens[-1]
             attrs["trigger_edge"] = edge
             attrs["Path"] = " ".join(tokens[:-1])
+            if "PathValue" in attrs:
+                attrs["PathValue"] = attrs["Path"]
         else:
             attrs.setdefault("trigger_edge", "")
         return attrs

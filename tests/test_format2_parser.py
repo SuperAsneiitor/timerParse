@@ -154,6 +154,12 @@ class TestFormat2Helpers(unittest.TestCase):
         self.assertEqual(delay, "0.033")
         self.assertEqual(time, "0.034")
 
+    def test_split_derate_pair(self):
+        """format2 LVF 变体：Derate 支持双值逗号串，并拆成 DerateA / DerateB。"""
+        p = Format2Parser()
+        self.assertEqual(p._splitDeratePair("1.1000,1.1100"), ("1.1000", "1.1100"))
+        self.assertEqual(p._splitDeratePair("0.9000"), ("0.9000", ""))
+
 
 class TestFormat2ParserOutput(unittest.TestCase):
     """Format2 解析结果检查：y-coord、Type 属性、path_summary。"""
@@ -180,6 +186,14 @@ class TestFormat2ParserOutput(unittest.TestCase):
             self.assertTrue(
                 any(v == "0.900" or v == "0.900,0.900" for v in derates),
                 "pin 行应解析出 Derate（单值或双值）",
+            )
+            self.assertTrue(
+                any((r.get("DerateA") or "").strip() == "0.900" for r in pin_rows),
+                "pin 行应拆出 DerateA",
+            )
+            self.assertTrue(
+                any((r.get("DerateB") or "").strip() == "0.900" for r in pin_rows),
+                "pin 行应拆出 DerateB",
             )
         finally:
             os.unlink(path)

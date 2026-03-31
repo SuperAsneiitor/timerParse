@@ -345,6 +345,31 @@ def generate_html_report(
             f"<td>{_fmt_plain(data.get('p95'))}</td><td>{_fmt_plain(data.get('p99'))}</td></tr>"
         )
 
+    # 新增：误差分桶占比统计（转置展示，减少冗余）
+    error_stats = stats.get("error_range_stats") or {}
+    arr_bins = (error_stats.get("arrival_time_ratio") or {}).get("bins") or []
+    req_bins = (error_stats.get("required_time_ratio") or {}).get("bins") or []
+    slack_bins = (error_stats.get("slack_diff") or {}).get("bins") or []
+    ratio_ranges = [str(b.get("range", "")) for b in arr_bins]
+    slack_ranges = [str(b.get("range", "")) for b in slack_bins]
+
+    ratio_range_headers = "".join(
+        f"<th>{html_module.escape(r)}</th>" for r in ratio_ranges
+    )
+    ratio_arr_row = "".join(
+        f"<td>{_fmt_percent_value((b.get('ratio') or 0.0) * 100)}</td>" for b in arr_bins
+    )
+    ratio_req_row = "".join(
+        f"<td>{_fmt_percent_value((b.get('ratio') or 0.0) * 100)}</td>" for b in req_bins
+    )
+
+    slack_range_headers = "".join(
+        f"<th>{html_module.escape(r)}</th>" for r in slack_ranges
+    )
+    slack_ratio_row = "".join(
+        f"<td>{_fmt_percent_value((b.get('ratio') or 0.0) * 100)}</td>" for b in slack_bins
+    )
+
     # 方案 B：关键差异列 + 排序 + 分页
     sort_by = (sort_by or "slack_diff").strip()
     if not sort_by:
@@ -570,6 +595,19 @@ def generate_html_report(
   <table>
     <tr><th>metric</th><th>count</th><th>min</th><th>max</th><th>mean</th><th>median</th><th>std</th><th>p90</th><th>p95</th><th>p99</th></tr>
     {''.join(rows_segment_stats)}
+  </table>
+
+  <h2>误差分桶占比统计（arrival/required）</h2>
+  <table>
+    <tr><th>metric</th>{ratio_range_headers}</tr>
+    <tr><td>arrival_time_ratio</td>{ratio_arr_row}</tr>
+    <tr><td>required_time_ratio</td>{ratio_req_row}</tr>
+  </table>
+
+  <h2>误差分桶占比统计（slack_diff abs）</h2>
+  <table>
+    <tr><th>metric</th>{slack_range_headers}</tr>
+    <tr><td>slack_diff</td>{slack_ratio_row}</tr>
   </table>
 
   <h2>路径列表（每条路径的核心差异）</h2>

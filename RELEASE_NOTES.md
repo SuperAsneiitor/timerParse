@@ -7,6 +7,10 @@
 - **单一解析实现**：Timing 解析只保留 **`lib/parser`**（`TimeParser` 子类 + `create_timing_report_parser` 等）；历史 **`lib/parsers/`** 及根目录薄转发已移除（见更早版本说明）。
 - **多进程抽取**：删除独立包 **`lib/parser_chaos/`**，逻辑并入 **`lib/parser/parallel_extract.py`**（`runExtractParallel` / `runExtractChaos`）；CLI **`extract-chaos`** 与 **`scripts/run_extract_chaos.py`** 均调用该模块，CSV schema 与 **`extract`** 一致。
 - **compare 详情页**：**`lib/compare/path_detail_html.py`** 中 Launch/Capture **逐点对比**表使用 **`thead`/`tbody` + `position: sticky`** 与限高滚动容器，长路径浏览时双层表头保持可见。
+- **compare 统计增强**：新增 `error_range_stats`（固定误差分桶占比）：
+  - `arrival_time_ratio` / `required_time_ratio`：`[0,5)`, `[5,10)`, `[10,20)`, `[20,50)`, `>50`（单位 `%`）
+  - `slack_diff`（绝对值）：`[0,5)`, `[5,10)`, `[10,20)`, `>20`
+  - HTML 报告按“转置”方式展示：`arrival/required` 合并一表，`slack_diff` 单独一表，减少冗余。
 - **实验包（历史）**：曾删除 **`lib/parser_chaos_V2/`** 及 `tests/test_parser_chaos_v2.py`。
 - **文档**：更新 **`README.md`**、**`docs/ARCHITECTURE.md`**、**`docs/extract_parallel.md`**（替代原 **`docs/parser_chaos.md`**）、**`PARSE_LAYOUTS.md`**、**`README_legacy.md`**、**`SESSION_MIGRATION.md`**、**`FORMAT_VALIDATION.md`**、**`PT_REPORT_REUSE_TEMPLATE.md`**、**`.cursor/skills`** 等。
 - **格式2**：net 行 Cap 后单位 **`xf`** / **`xd`** 从描述中剥离的行为与 extract / extract-chaos 一致。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from . import extract
@@ -19,6 +20,62 @@ def _ensure_subcommand(argv: list[str] | None) -> list[str]:
     if argv[0] in known:
         return argv
     return ["extract"] + argv
+
+
+def _callerCwd() -> str:
+    """返回用户调用 CLI 时的工作目录，避免 lake 切回 repo root 后相对路径失真。"""
+    caller_cwd = (os.environ.get("LAKE_CALLER_CWD") or "").strip()
+    if caller_cwd and os.path.isdir(caller_cwd):
+        return os.path.abspath(caller_cwd)
+    return os.getcwd()
+
+
+def resolveUserPath(path_value: str | None) -> str | None:
+    """将用户传入路径解析为绝对路径；相对路径始终基于调用者 cwd。"""
+    if path_value in (None, ""):
+        return path_value
+    text = os.path.expanduser(str(path_value))
+    if os.path.isabs(text):
+        return os.path.abspath(text)
+    return os.path.abspath(os.path.join(_callerCwd(), text))
+
+
+def _resolveCommandPaths(args) -> None:
+    """按子命令归一化所有路径参数，确保 lake 外部调用时相对路径语义稳定。"""
+    command = getattr(args, "command", "")
+    if command == "extract":
+        args.input_rpt = resolveUserPath(args.input_rpt)
+        args.output_dir = resolveUserPath(args.output_dir)
+        return
+    if command == "extract-chaos":
+        args.input_rpt = resolveUserPath(args.input_rpt)
+        args.output_dir = resolveUserPath(args.output_dir)
+        return
+    if command == "gen-pt":
+        args.launch_csv = resolveUserPath(args.launch_csv)
+        args.output = resolveUserPath(args.output)
+        args.output_file = resolveUserPath(args.output_file)
+        args.launch_glob = resolveUserPath(args.launch_glob)
+        return
+    if command == "compare":
+        args.golden_file = resolveUserPath(args.golden_file)
+        args.test_file = resolveUserPath(args.test_file)
+        args.golden_file_opt = resolveUserPath(args.golden_file_opt)
+        args.test_file_opt = resolveUserPath(args.test_file_opt)
+        args.output = resolveUserPath(args.output)
+        args.charts_dir = resolveUserPath(args.charts_dir)
+        args.stats_json = resolveUserPath(args.stats_json)
+        args.stats_csv = resolveUserPath(args.stats_csv)
+        args.golden_launch_csv = resolveUserPath(args.golden_launch_csv)
+        args.test_launch_csv = resolveUserPath(args.test_launch_csv)
+        args.golden_capture_csv = resolveUserPath(args.golden_capture_csv)
+        args.test_capture_csv = resolveUserPath(args.test_capture_csv)
+        return
+    if command == "gen-report":
+        args.config = resolveUserPath(args.config)
+        args.output = resolveUserPath(args.output)
+        args.path_manifest_in = resolveUserPath(args.path_manifest_in)
+        args.path_manifest_out = resolveUserPath(args.path_manifest_out)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -284,6 +341,7 @@ def run_cli(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
+    _resolveCommandPaths(args)
     log_util.set_level(getattr(args, "log_level", "brief"))
 
     if args.command == "extract":

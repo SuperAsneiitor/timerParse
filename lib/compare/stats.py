@@ -35,6 +35,49 @@ def _to_number_list(rows: List[Dict[str, str]], key: str) -> List[float]:
     return vals
 
 
+def _buildErrorRangeBuckets(
+    values: List[float],
+    range_edges: List[float],
+    use_abs: bool = True,
+) -> List[Dict[str, float | int | str]]:
+    """按固定区间统计误差分布占比，并附加最后一个 >max 桶。"""
+    if not values:
+        return []
+    if not range_edges or len(range_edges) < 2:
+        return []
+
+    normalized = [abs(v) if use_abs else v for v in values]
+    total = len(normalized)
+    buckets: List[Dict[str, float | int | str]] = []
+
+    for i in range(len(range_edges) - 1):
+        lo = float(range_edges[i])
+        hi = float(range_edges[i + 1])
+        count = sum(1 for v in normalized if lo <= v < hi)
+        buckets.append(
+            {
+                "range": f"[{lo:g},{hi:g})",
+                "lower": _round3(lo),
+                "upper": _round3(hi),
+                "count": count,
+                "ratio": _round3((count / total) if total else 0.0),
+            }
+        )
+
+    max_edge = float(range_edges[-1])
+    tail_count = sum(1 for v in normalized if v >= max_edge)
+    buckets.append(
+        {
+            "range": f">{max_edge:g}",
+            "lower": _round3(max_edge),
+            "upper": None,
+            "count": tail_count,
+            "ratio": _round3((tail_count / total) if total else 0.0),
+        }
+    )
+    return buckets
+
+
 def _quantile(values: List[float], q: float) -> float | None:
     if not values:
         return None
@@ -181,6 +224,40 @@ def compute_stats(
     slack_unknown_count = max(0, len(rows) - slack_total)
     slack_pass_ratio = (slack_pass_count / slack_total) if slack_total else 0.0
 
+    # 新增：误差分桶占比统计
+    error_range_stats = {
+        "arrival_time_ratio": {
+            "abs_value": True,
+            "ranges": [0, 5, 10, 20, 50],
+            "unit": "%",
+            "bins": _buildErrorRangeBuckets(
+                _to_number_list(rows, "arrival_time_ratio"),
+                range_edges=[0, 5, 10, 20, 50],
+                use_abs=True,
+            ),
+        },
+        "required_time_ratio": {
+            "abs_value": True,
+            "ranges": [0, 5, 10, 20, 50],
+            "unit": "%",
+            "bins": _buildErrorRangeBuckets(
+                _to_number_list(rows, "required_time_ratio"),
+                range_edges=[0, 5, 10, 20, 50],
+                use_abs=True,
+            ),
+        },
+        "slack_diff": {
+            "abs_value": True,
+            "ranges": [0, 5, 10, 20],
+            "unit": "abs",
+            "bins": _buildErrorRangeBuckets(
+                _to_number_list(rows, "slack_diff"),
+                range_edges=[0, 5, 10, 20],
+                use_abs=True,
+            ),
+        },
+    }
+
     return {
         "input_files": {
             "golden_file": str(golden_file or ""),
@@ -192,6 +269,7 @@ def compute_stats(
         "correlations": correlations,
         "columns": ratio_columns,
         "numeric_counts": {k: len(v) for k, v in data_by_col.items()},
+        "error_range_stats": error_range_stats,
         "slack_pass_stats": {
             "pass_count": slack_pass_count,
             "fail_count": slack_fail_count,

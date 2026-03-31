@@ -88,6 +88,8 @@ class Format2Parser(TimeParser):
         "D-Trans",
         "Trans",
         "Derate",
+        "DerateA",
+        "DerateB",
         "x-coord",
         "y-coord",
         "D-Delay",
@@ -98,8 +100,8 @@ class Format2Parser(TimeParser):
     ]
     skip_first_rows = 4
     default_attrs_by_type = {
-        "input_pin": ["Type", "D-Trans", "Trans", "Derate", "x-coord", "y-coord", "D-Delay", "Delay", "Time", "trigger_edge", "Description"],
-        "output_pin": ["Type", "Trans", "Derate", "x-coord", "y-coord", "Delay", "Time", "trigger_edge", "Description"],
+        "input_pin": ["Type", "D-Trans", "Trans", "Derate", "DerateA", "DerateB", "x-coord", "y-coord", "D-Delay", "Delay", "Time", "trigger_edge", "Description"],
+        "output_pin": ["Type", "Trans", "Derate", "DerateA", "DerateB", "x-coord", "y-coord", "Delay", "Time", "trigger_edge", "Description"],
         "net": ["Type", "Fanout", "Cap", "Description"],
         "clock": ["Type", "Delay", "Time", "Description"],
         "port": ["Type", "Trans", "x-coord", "y-coord", "Delay", "Time", "trigger_edge", "Description"],
@@ -383,6 +385,17 @@ class Format2Parser(TimeParser):
         y = parts[1] if len(parts) >= 2 else ""
         return derate_part, x, y
 
+    @staticmethod
+    def _splitDeratePair(derate_text: str) -> tuple[str, str]:
+        """拆分 format2 的 Derate 双值（a,b）；单值时仅返回第一个。"""
+        text = str(derate_text or "").strip()
+        if not text:
+            return "", ""
+        if "," not in text:
+            return text, ""
+        left, right = text.split(",", 1)
+        return left.strip(), right.strip()
+
     # -----------------------------------------------------------------------
     # Backward-compatible alias      /       ?snake_case ?
     # -----------------------------------------------------------------------
@@ -490,6 +503,7 @@ class Format2Parser(TimeParser):
         prefix_area = content[: col_pos["Description"]] if "Description" in col_pos else content
         trans, derate, x_val, y_val, d_delay, delay, time = self._extractPinMetrics(prefix_area, is_output=False)
         attrs["Derate"] = derate or (raw.get("Derate") or "").strip().replace(" ", "")
+        attrs["DerateA"], attrs["DerateB"] = self._splitDeratePair(attrs["Derate"])
         attrs["x-coord"] = x_val or self._parseXy(self._xyCellFromRaw(raw), "x-coord")
         attrs["y-coord"] = y_val or self._parseXy(self._xyCellFromRaw(raw), "y-coord")
         raw_dtrans = (raw.get("D-Trans") or "").strip()
@@ -514,6 +528,7 @@ class Format2Parser(TimeParser):
         prefix_area = content[: col_pos["Description"]] if "Description" in col_pos else content
         trans, derate, x_val, y_val, _d_delay, delay, time = self._extractPinMetrics(prefix_area, is_output=True)
         attrs["Derate"] = derate or (raw.get("Derate") or "").strip().replace(" ", "")
+        attrs["DerateA"], attrs["DerateB"] = self._splitDeratePair(attrs["Derate"])
         attrs["x-coord"] = x_val or self._parseXy(self._xyCellFromRaw(raw), "x-coord")
         attrs["y-coord"] = y_val or self._parseXy(self._xyCellFromRaw(raw), "y-coord")
         raw_trans = (raw.get("Trans") or "").strip()
