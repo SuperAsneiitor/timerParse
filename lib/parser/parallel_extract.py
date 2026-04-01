@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import log_util
-from ..extract import SEMANTIC_POINT_ATTRS
+from ..extract import SEMANTIC_POINT_ATTRS, _hasLvfSignals
 from .engine import create_timing_report_parser, detect_report_format
 from .time_parser_base import ParseOutput, TimeParser
 
@@ -214,6 +214,7 @@ def runExtractParallel(
     paths_per_shard: int = 0,
     merge_launch: bool = False,
     log_level: str = "brief",
+    lvf: bool = False,
 ) -> int:
     """
     多进程队列抽取：输出与 lib.extract.runExtract 相同的一组 CSV。
@@ -253,7 +254,7 @@ def runExtractParallel(
     _, _, _, delay_attr = _csv_layout(format_key)
     try:
         if int(paths_per_shard or 0) > 0:
-            _collect_and_write_sharded(
+            lvf_seen = _collect_and_write_sharded(
                 result_queue=result_queue,
                 num_workers=num_workers,
                 output_dir=output_dir,
@@ -262,7 +263,14 @@ def runExtractParallel(
                 paths_per_shard=int(paths_per_shard),
                 merge_summary=True,
                 merge_launch=bool(merge_launch),
+                lvf=bool(lvf),
             )
+            if lvf and not lvf_seen:
+                log_util.error(
+                    "Error: --lvf 已启用，但未检测到 LVF 字段（如 TransMean/DerateA/Delta）。"
+                    "请确认输入报告是否为 LVF 模式，或去掉 --lvf。"
+                )
+                return 1
             log_util.brief(f"Sharded output enabled: {int(paths_per_shard)} path(s) per file")
             if merge_launch:
                 log_util.full("Merged launch_path.csv enabled for sharded output")
@@ -272,6 +280,14 @@ def runExtractParallel(
                 log_util.error("No paths parsed.")
                 return 0
             output = aggregate_parallel_results(results, delay_attr=delay_attr)
+            if lvf and not (
+                _hasLvfSignals(output.launch_rows) or _hasLvfSignals(output.capture_rows)
+            ):
+                log_util.error(
+                    "Error: --lvf 已启用，但未检测到 LVF 字段（如 TransMean/DerateA/Delta）。"
+                    "请确认输入报告是否为 LVF 模式，或去掉 --lvf。"
+                )
+                return 1
             _write_output_csv(output, output_dir, format_key)
     finally:
         splitter_proc.join()
@@ -303,7 +319,9 @@ def _collect_and_write_sharded(
     paths_per_shard: int,
     merge_summary: bool = True,
     merge_launch: bool = False,
-) -> None:
+    lvf: bool = False,
+) -> bool:
+    """写出分片 CSV；若 lvf 为 True，返回是否在任意分片中检测到 LVF 字段。"""
     os.makedirs(output_dir, exist_ok=True)
     base_cols, launch_cols, summary_cols, _ = _csv_layout(format_key)
 
@@ -311,9 +329,10 @@ def _collect_and_write_sharded(
     shard_paths: list[tuple[int, dict, list[dict], list[dict]]] = []
     end_count = 0
     total_paths = 0
+    lvf_seen = False
 
     def _flush_shard() -> None:
-        nonlocal shard_index, shard_paths
+        nonlocal shard_index, shard_paths, lvf_seen
         if not shard_paths:
             return
         shard_sorted = sorted(shard_paths, key=lambda x: x[0])
@@ -345,6 +364,9 @@ def _collect_and_write_sharded(
         _write_csv(os.path.join(output_dir, f"launch_clock_path{suffix}"), launch_clock_rows, base_cols)
         _write_csv(os.path.join(output_dir, f"data_path{suffix}"), data_path_rows, base_cols)
 
+        if lvf:
+            lvf_seen = lvf_seen or _hasLvfSignals(launch_rows) or _hasLvfSignals(capture_rows)
+
         shard_index += 1
         shard_paths = []
 
@@ -369,6 +391,7 @@ def _collect_and_write_sharded(
         _merge_csv_parts(output_dir, "launch_path", merged_name="launch_path.csv")
 
     log_util.brief(f"Wrote sharded outputs for {total_paths} path(s) -> {output_dir}")
+    return lvf_seen
 
 
 def _merge_csv_parts(output_dir: str, base_name: str, merged_name: str | None = None) -> str:

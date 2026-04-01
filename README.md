@@ -190,6 +190,11 @@ python -m unittest tests.test_format1_parser tests.test_format2_parser tests.tes
 | `-j` / `--jobs N` | 并行进程数（默认 1） |
 | `-p` / `--paths-per-shard N` | 每 N 条 path 一组 `*_partK.csv`；0 表示不拆分（默认 0） |
 | `-m` / `--merge-launch` | 分片输出时额外合并生成 `launch_path.csv` |
+| `--lvf` | 强制 LVF 校验；若未检测到 LVF 字段（如 `TransMean` / `DerateA`）则报错 |
+
+LVF 与非 LVF 的使用建议：
+- 非 LVF：不加 `--lvf`（默认模式）。
+- LVF：添加 `--lvf`，用于确认输入报告确实包含 LVF 字段。
 
 ### 10.3 `extract-chaos`
 
@@ -201,6 +206,7 @@ python -m unittest tests.test_format1_parser tests.test_format2_parser tests.tes
 | `-j` / `--jobs N` | Worker 进程数（默认 **3**） |
 | `-p` / `--paths-per-shard N` | 每 N 条 path 一组 `*_partK.csv`；0 表示不拆分 |
 | `-m` / `--merge-launch` | 分片输出时额外合并 `launch_path.csv` |
+| `--lvf` | 与 `extract` 的 `--lvf` 相同：强制 LVF 校验 |
 
 ### 10.4 `gen-pt`
 
@@ -257,3 +263,14 @@ python -m unittest tests.test_format1_parser tests.test_format2_parser tests.tes
 | `config` | YAML 配置文件路径（位置参数） |
 | `-o` / `--output` | 输出 `.rpt` 路径（默认按 format 写到 `output/gen_<format>_timing_report.rpt`） |
 | `-s` / `--seed N` | 随机种子（可复现） |
+
+### 10.7 验证脚本（可选）
+
+| 脚本 | 说明 |
+|------|------|
+| `scripts/run_validation_flow.py` | 三格式生成 → `extract` → `compare` 全链路；`python scripts/run_validation_flow.py --jobs 4`；`config/gen_report/base.yaml` 中 **`num_paths: 100`**，覆盖 **100 条非 LVF 长路径** |
+| `scripts/validate_extract_vs_chaos.py` | 对**同一份** `.rpt` 分别跑 `extract` 与 `extract-chaos`，比对五行 CSV **行数**是否一致 |
+| `scripts/run_lvf_100_validation.py` | 合成 **100 条 path** 的 **format1 LVF**（**长 `data_path`**，见 `tests/format1_lvf_synth.py`）→ `extract` / `extract-chaos` 均带 `--lvf` 并比对行数；可选 `--extra-data-groups N`；可选跑 `validate_extract_results` |
+| `scripts/validate_extract_results.py` | 校验某次 `extract` 输出目录的列与规则 |
+
+**完整回归建议**：非 LVF 跑 `run_validation_flow.py`，LVF 跑 `run_lvf_100_validation.py`，**各 100 path、长 data 段**。**单测**：`tests/test_lvf_100_paths.py` 对 100 条 LVF 合成报告做解析与 `data_path` 点数下限检查。

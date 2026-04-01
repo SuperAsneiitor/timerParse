@@ -32,12 +32,19 @@ python -m lib gen-report config/gen_report/format2.yaml --seed 1 -o "test_result
 
 **After every code change** that affects report generation, parsing, or extraction:
 
-1. Run the full validation flow from repo root:
+1. Run the **non-LVF** full validation flow from repo root ( **`num_paths: 100`** in `config/gen_report/base.yaml` → **100 paths** with long timing segments ):
    ```bash
    python scripts/run_validation_flow.py --jobs 4
    ```
-2. If any step fails (gen-report, extract, or compare), fix the code and re-run until the flow completes successfully. Do not wait for user approval to fix.
-3. When reporting results, include: base timestamped folder path, row counts per format, and compare stats (or any anomalies).
+2. For changes touching **format1 LVF**, launch/data split, or `--lvf` extract, also run the **LVF 100-path long `data_path`** script (synthetic report + `extract` / `extract-chaos` with `--lvf`):
+   ```bash
+   python scripts/run_lvf_100_validation.py
+   ```
+   Optional: `--extra-data-groups N` matches `tests/format1_lvf_synth.buildFormat1LvfReport(..., extra_data_groups=N)` to stress longer data paths.
+3. If any step fails (gen-report, extract, or compare), fix the code and re-run until the flow completes successfully. Do not wait for user approval to fix.
+4. When reporting results, include: base timestamped folder path, row counts per format, and compare stats (or any anomalies).
+
+**Rule of thumb:** a **complete** regression run = **`run_validation_flow.py`** (non-LVF, 100 paths) **+** **`run_lvf_100_validation.py`** (LVF, 100 paths, long data_path). Unit test `tests/test_lvf_100_paths.py` complements the LVF track.
 
 ## Completion Checklist (per run)
 

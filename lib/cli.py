@@ -153,6 +153,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="分片模式下额外合并生成 launch_path.csv",
     )
+    ext.add_argument(
+        "--lvf",
+        action="store_true",
+        help="按 LVF 模式抽取：要求输出中出现 LVF 相关字段（如 TransMean/DerateA 等），否则报错",
+    )
 
     # extract-chaos：与 extract 相同解析器（lib.parser），多进程队列吞吐更高
     exC = subparsers.add_parser(
@@ -183,6 +188,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--merge-launch",
         action="store_true",
         help="当启用分片输出时，额外合并生成 launch_path.csv（默认不生成）",
+    )
+    exC.add_argument(
+        "--lvf",
+        action="store_true",
+        help="按 LVF 模式抽取：要求输出中出现 LVF 相关字段（如 TransMean/DerateA 等），否则报错",
     )
 
     # gen-pt
@@ -355,6 +365,7 @@ def run_cli(argv: list[str] | None = None) -> int:
             paths_per_shard=getattr(args, "paths_per_shard", 0),
             merge_launch=getattr(args, "merge_launch", False),
             log_level=getattr(args, "log_level", "brief"),
+            lvf=bool(getattr(args, "lvf", False)),
         )
     if args.command == "gen-pt":
         return gen_pt_module.run_gen_pt(args)

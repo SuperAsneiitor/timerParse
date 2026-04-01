@@ -49,6 +49,30 @@ SEMANTIC_POINT_ATTRS = [
 ]
 
 
+def _hasLvfSignals(rows: list[dict]) -> bool:
+    """判断抽取结果是否包含 LVF 语义字段。"""
+    lvf_keys = (
+        "TransMean",
+        "TransSensit",
+        "TransValue",
+        "IncrMean",
+        "IncrSensit",
+        "IncrValue",
+        "PathMean",
+        "PathSensit",
+        "PathValue",
+        "DerateA",
+        "DerateB",
+        "D-Trans",
+        "Delta",
+    )
+    for row in rows:
+        for key in lvf_keys:
+            if str(row.get(key, "")).strip() != "":
+                return True
+    return False
+
+
 def _workerParseOne(args: tuple) -> tuple:
     """多进程 worker：解析单条 path 文本，返回 (meta, launch_rows, capture_rows)。"""
     parser_cls, path_id, path_text = args
@@ -295,6 +319,15 @@ def runExtract(args) -> int:
         return 0
 
     result = parseWithJobs(parser_impl, rpt_path, jobs=args.jobs)
+
+    if bool(getattr(args, "lvf", False)):
+        is_lvf = _hasLvfSignals(result.launch_rows) or _hasLvfSignals(result.capture_rows)
+        if not is_lvf:
+            log_util.error(
+                "Error: --lvf 已启用，但未检测到 LVF 字段（如 TransMean/DerateA/Delta）。"
+                "请确认输入报告是否为 LVF 模式，或去掉 --lvf。"
+            )
+            return 1
 
     launch_csv = os.path.join(out_dir, "launch_path.csv")
     capture_csv = os.path.join(out_dir, "capture_path.csv")

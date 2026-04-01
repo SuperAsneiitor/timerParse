@@ -64,6 +64,17 @@ python scripts/run_validation_flow.py --jobs 4
 - If any step fails (gen-report, extract, or compare), fix the code and re-run until the flow completes successfully.
 - Report row counts and compare stats to the user when reporting results.
 
+### Full regression: non-LVF **and** LVF, each **100 paths** with **long data_path**
+
+A complete end-to-end check must cover **both** tracks (they exercise different parsers / `--lvf` columns):
+
+| Track | Entry script | What it enforces |
+|-------|----------------|------------------|
+| **Non-LVF** | `python scripts/run_validation_flow.py --jobs 4` | Uses `config/gen_report/base.yaml` **`num_paths: 100`** (and inherited by `format1.yaml` / `format2.yaml` / `pt.yaml`), so generated reports have **100 paths** with **long launch/data segments** from the normal generator. |
+| **LVF** | `python scripts/run_lvf_100_validation.py` | Synthesizes **100** format1 **LVF** paths via `tests/format1_lvf_synth.py`, with **long `data_path`** (extra pin/net groups after the Startpoint output pin); runs `extract` and `extract-chaos` with **`--lvf`** and checks the five CSV row counts match. |
+
+Run **both** after changes that could affect format1 LVF, launch/data split, or extract parity. The unit test `tests/test_lvf_100_paths.py` guards LVF 100-path parse + minimum `data_path_point_count`.
+
 ## Completion Checklist
 
 - [ ] All 3 generated reports exist in `reports/`

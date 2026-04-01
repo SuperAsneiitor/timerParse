@@ -55,6 +55,11 @@ def main() -> int:
         help="当启用分片输出时，额外合并生成 launch_path.csv（默认不生成）",
     )
     parser.add_argument(
+        "--lvf",
+        action="store_true",
+        help="按 LVF 模式抽取：要求输出中出现 LVF 相关字段，否则报错（与 extract --lvf 一致）",
+    )
+    parser.add_argument(
         "-l",
         "--log-level",
         choices=["brief", "full"],
@@ -70,6 +75,7 @@ def main() -> int:
         paths_per_shard=args.paths_per_shard,
         merge_launch=args.merge_launch,
         log_level=args.log_level,
+        lvf=bool(args.lvf),
     )
 
 
