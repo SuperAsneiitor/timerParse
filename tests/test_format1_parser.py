@@ -377,6 +377,35 @@ sta.timing_check_type: setup
         self.assertEqual((launch_clock.get("IncrValue") or "").strip(), "0.0450")
         self.assertEqual((launch_clock.get("PathValue") or "").strip(), "0.1460")
 
+    def test_lvf_rows_parse_without_fixed_column_alignment(self):
+        """LVF 行即使列宽不对齐（仅用 2+ 空格分隔）也应解析出关键字段。"""
+        rpt = """
+sta.timing_check_type: setup
+  Startpoint: SP/Q (falling edge-triggered flip-flop clocked by CORECLK)
+  Endpoint: EP/D (rising edge-triggered flip-flop clocked by CORECLK)
+  Scenario: demo
+
+  Point  Fanout  Derate  Cap  DTrans  -Trans-  -Incr-  -Path-
+  Point  Fanout  Derate  Cap  DTrans  Mean  Sensit  Value  Location  Delta  Mean  Sensit  Value  Mean  Sensit  Value
+  ------------------------------------------------------------------------------------------------------------------------
+  clock CORECLK (rise edge)  0.0450  0.1460
+  U0/A (BUF)  1  0.8766:1.1000  0.0080  0.0000  0.0450  0.000  0.0450  (522.4, 695.8)  0.0000  0.0450  0.000  0.0450  0.1460  0.0260  0.1460 r
+  data arrival time  0.5750
+
+  clock CORECLK (rise edge)  0.0190  0.0190
+  U1/Z (BUF)  1  0.8000:0.9000  0.0040  0.0000  0.0420  0.000  0.0420  (237.7, 833.8)  0.0000  0.0450  0.000  0.0450  0.1930  0.0470  0.1930 f
+  library setup time  -0.0190  -0.0190
+  data required time  0.8000
+  slack (MET)  0.2250
+"""
+        out = self._parse_text(rpt)
+        launch_pin = next((r for r in out.launch_rows if "U0/A" in r.get("point", "")), None)
+        self.assertIsNotNone(launch_pin)
+        self.assertEqual((launch_pin or {}).get("TransMean"), "0.0450")
+        self.assertEqual((launch_pin or {}).get("IncrValue"), "0.0450")
+        self.assertEqual((launch_pin or {}).get("PathValue"), "0.1460")
+        self.assertEqual((launch_pin or {}).get("trigger_edge"), "r")
+
 
 if __name__ == "__main__":
     unittest.main()

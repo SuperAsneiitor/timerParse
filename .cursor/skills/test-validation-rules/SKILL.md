@@ -1,57 +1,71 @@
 ---
 name: test-validation-rules
-description: Test and validation output conventions for timerExtract. Use when writing test results, running validation, or changing report/parser code.
+description: Enforce timerExtract test/validation conventions: timestamped test_results outputs, mandatory post-change validation, LVF+non-LVF regression requirements, and consistent PASS/FAIL reporting format.
 ---
 
 # Test & Validation Rules
 
-## Output Directory Convention
+## 第一性原理
 
-All test and validation artifacts **must** be written under **timestamped directories** only:
+- **目标**：让每次验证都“可比较、可追溯、可复现”。
+- **核心资产**：时间戳目录 + 统一口径（PASS/FAIL + 关键行数）。
+- **底线**：没有可追溯产物的验证，等同于未验证。
 
-- **Base path**: `test_results/`
-- **Pattern**: `test_results/<prefix>_YYYYMMDD_HHMMSS/` (e.g. `validation_flow_20260316_105205`, `extract_parallel_validation_20260316_100327`)
-- **Do not** create non-timestamped folders or files under `test_results/` (e.g. avoid `test_results/tmp_*`, `test_results/format2_launch_sep`, or fixed-name `.rpt` files for persistent storage).
+## Quick Start
 
-One-off or ad-hoc runs must also use a timestamped subdir, for example:
+每次改动后，至少执行：
 
 ```bash
-TS=$(date +%Y%m%d_%H%M%S)
-python -m lib gen-report config/gen_report/format2.yaml --seed 1 -o "test_results/validation_flow_${TS}/reports/gen_format2.rpt"
-python -m lib extract "test_results/validation_flow_${TS}/reports/gen_format2.rpt" --format format2 -o "test_results/validation_flow_${TS}/extract_format2"
+python scripts/run_validation_flow.py --jobs 4
 ```
 
-On Windows (PowerShell):
+涉及 LVF 或 `--lvf` 抽取时，再执行：
 
-```powershell
-$ts = Get-Date -Format "yyyyMMdd_HHmmss"
-python -m lib gen-report config/gen_report/format2.yaml --seed 1 -o "test_results/validation_flow_$ts/reports/gen_format2.rpt"
+```bash
+python scripts/run_lvf_100_validation.py
 ```
 
-## Post-Change Validation (Required)
+## Use When
 
-**After every code change** that affects report generation, parsing, or extraction:
+- 运行测试、验证脚本、回归流程。
+- 修改报告生成、解析、抽取、compare 相关代码。
+- 汇报测试结果给用户时。
 
-1. Run the **non-LVF** full validation flow from repo root ( **`num_paths: 100`** in `config/gen_report/base.yaml` → **100 paths** with long timing segments ):
-   ```bash
-   python scripts/run_validation_flow.py --jobs 4
-   ```
-2. For changes touching **format1 LVF**, launch/data split, or `--lvf` extract, also run the **LVF 100-path long `data_path`** script (synthetic report + `extract` / `extract-chaos` with `--lvf`):
-   ```bash
-   python scripts/run_lvf_100_validation.py
-   ```
-   Optional: `--extra-data-groups N` matches `tests/format1_lvf_synth.buildFormat1LvfReport(..., extra_data_groups=N)` to stress longer data paths.
-3. If any step fails (gen-report, extract, or compare), fix the code and re-run until the flow completes successfully. Do not wait for user approval to fix.
-4. When reporting results, include: base timestamped folder path, row counts per format, and compare stats (or any anomalies).
+## Output Rules
 
-**Rule of thumb:** a **complete** regression run = **`run_validation_flow.py`** (non-LVF, 100 paths) **+** **`run_lvf_100_validation.py`** (LVF, 100 paths, long data_path). Unit test `tests/test_lvf_100_paths.py` complements the LVF track.
+- 所有验证产物必须放到 `test_results/` 下的时间戳目录：
+  - `test_results/<prefix>_YYYYMMDD_HHMMSS/`
+- 禁止写入固定名称目录或无时间戳目录（例如 `test_results/tmp_*`、固定文件名 `.rpt` 作为长期产物）。
 
-## Completion Checklist (per run)
+## Post-Change Validation Rules
 
-- [ ] All 3 reports generated under `reports/`
-- [ ] All 3 extract dirs contain: `launch_path.csv`, `capture_path.csv`, `launch_clock_path.csv`, `data_path.csv`, `path_summary.csv`
-- [ ] Compare outputs: `compare/pt_vs_format1.csv`, `compare/pt_vs_format2.csv` (and stats JSON)
+1. **Non-LVF 必跑**：`python scripts/run_validation_flow.py --jobs 4`
+2. **LVF 相关改动必跑**：`python scripts/run_lvf_100_validation.py`
+3. 任一步失败必须立即修复并重跑，直到全部通过。
+4. 完整回归标准：Non-LVF 100 paths + LVF 100 paths（长 `data_path`）。
 
-## Cleanup (Optional)
+## Completion Checklist
 
-To avoid clutter, consider periodically removing old timestamped dirs or non-timestamped leftovers under `test_results/` (e.g. `tmp_*`, fixed-name folders). Prefer keeping only recent validation runs.
+- [ ] 三格式报告已生成
+- [ ] 五行 CSV 齐全（launch/capture/launch_clock/data_path/summary）
+- [ ] compare 输出与 stats JSON 齐全
+- [ ]（LVF 场景）`extract` 与 `extract-chaos` 行数一致
+
+## Reporting Template
+
+```markdown
+验证目录：
+- <timestamped path>
+
+执行项：
+- run_validation_flow: PASS/FAIL
+- run_lvf_100_validation: PASS/FAIL (如执行)
+
+关键行数：
+- format1: ...
+- format2: ...
+- pt: ...
+
+异常：
+- 无 / <详细异常与修复动作>
+```

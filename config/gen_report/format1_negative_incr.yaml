@@ -1,0 +1,9 @@
+extends: format1.yaml
+format: format1
+
+# 故意制造 Incr 为负值的 format1 报告，用于验证 compare/解析健壮性
+table:
+  columns:
+    Incr:
+      value: { type: random_float, min: -0.060, max: -0.001, decimals: 3 }
+      when_type: [clock, clock_net_delay, pin, input_pin, output_pin, port, library_setup, path_check_period, clock_reconv, clock_uncertainty]

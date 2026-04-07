@@ -247,18 +247,14 @@ class Format1Parser(TimeParser):
 
     def _findClassicTableStart(self, lines: list[str]) -> tuple[dict[str, Any], int]:
         """定位传统 format1 表头。"""
-        col_pos: dict[str, int] = {}
         table_start = 0
-        classic_attrs = ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path"]
         for idx, line in enumerate(lines):
             if self._re_point_header.match(line):
-                col_pos = self.extractColumnPositions(line, classic_attrs)
-                if "Location" in col_pos:
-                    table_start = idx + 1
-                    if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
-                        table_start += 1
-                    return {"mode": "classic", "col_pos": col_pos}, table_start
-        return {"mode": "classic", "col_pos": {}}, table_start
+                table_start = idx + 1
+                if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
+                    table_start += 1
+                return {"mode": "classic"}, table_start
+        return {"mode": "classic"}, table_start
 
     def _findLvfTableStart(self, lines: list[str]) -> tuple[dict[str, Any], int]:
         """定位 LVF 双层表头（支持“分组行在上、属性行在下”的正确格式）。"""
@@ -268,21 +264,17 @@ class Format1Parser(TimeParser):
 
             # 正确格式：上一行是 Trans/Incr/Path 分组，下一行是 Fanout/Derate/.../Mean/Sensit/Value
             if self._isLvfGroupHeaderLine(line_a) and self._isLvfAttrHeaderLine(line_b):
-                col_pos = self._buildLvfColumnPositions(line_b)
-                if col_pos:
-                    table_start = idx + 2
-                    if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
-                        table_start += 1
-                    return {"mode": "lvf", "col_pos": col_pos}, table_start
+                table_start = idx + 2
+                if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
+                    table_start += 1
+                return {"mode": "lvf"}, table_start
 
             # 兼容历史反向格式：属性行在上、分组行在下
             if self._isLvfAttrHeaderLine(line_a) and self._isLvfGroupHeaderLine(line_b):
-                col_pos = self._buildLvfColumnPositions(line_a)
-                if col_pos:
-                    table_start = idx + 2
-                    if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
-                        table_start += 1
-                    return {"mode": "lvf", "col_pos": col_pos}, table_start
+                table_start = idx + 2
+                if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
+                    table_start += 1
+                return {"mode": "lvf"}, table_start
         return {}, 0
 
     @staticmethod
@@ -297,45 +289,111 @@ class Format1Parser(TimeParser):
             return False
         return text.count("mean") >= 3 and text.count("sensit") >= 3 and text.count("value") >= 3
 
-    def _buildLvfColumnPositions(self, attr_line: str) -> dict[str, int]:
-        """根据 LVF 属性行构建固定列宽起始位置。"""
-        col_pos: dict[str, int] = {}
-        for src, dst in [
-            ("Fanout", "Fanout"),
-            ("Derate", "Derate"),
-            ("Cap", "Cap"),
-            ("DTrans", "D-Trans"),
-            ("Location", "Location"),
-            ("Delta", "Delta"),
-        ]:
-            idx = attr_line.find(src)
-            if idx >= 0:
-                col_pos[dst] = idx
+    @staticmethod
+    def _splitByFieldGaps(line: str) -> list[str]:
+        """按 2+ 空白切字段（语义优先，不依赖固定列宽）。"""
+        text = str(line or "").rstrip()
+        if not text:
+            return []
+        return [x.strip() for x in re.split(r"\s{2,}", text.strip()) if x.strip()]
 
-        means = [m.start() for m in re.finditer(r"Mean", attr_line)]
-        sensits = [m.start() for m in re.finditer(r"Sensit", attr_line)]
-        values = [m.start() for m in re.finditer(r"Value", attr_line)]
-        if min(len(means), len(sensits), len(values)) < 3:
-            return {}
-        groups = ["Trans", "Incr", "Path"]
-        for i, group in enumerate(groups):
-            col_pos[f"{group}Mean"] = means[i]
-            col_pos[f"{group}Sensit"] = sensits[i]
-            col_pos[f"{group}Value"] = values[i]
-        return col_pos
+    @staticmethod
+    def _normalizeTokenFragments(tokens: list[str]) -> list[str]:
+        """
+        规范化被列宽粘连的 token（例如 '0.8766:1.1000 0.0080'）。
+        仅做确定性的二段拆分，避免按列位置切片。
+        """
+        out: list[str] = []
+        for tok in tokens:
+            m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?:-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*", tok)
+            if m:
+                out.append(m.group(1))
+                out.append(m.group(2))
+                continue
+            out.append(tok)
+        return out
 
-    def _parseByPositions(self, line: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
-        """按列起始位置切分单行。"""
-        content = line.rstrip()
-        ordered = sorted(col_pos.items(), key=lambda item: item[1])
-        if not ordered:
-            return "", {}
-        point = content[: ordered[0][1]].strip()
-        attrs: dict[str, str] = {}
-        for i, (name, start) in enumerate(ordered):
-            end = ordered[i + 1][1] if i + 1 < len(ordered) else len(content)
-            value = content[start:end].strip() if start < end else ""
-            attrs[name] = "" if value == "-" else value
+    def _parseClassicByTokens(self, line: str) -> tuple[str, Dict[str, str]]:
+        """
+        classic 行按字段分隔解析：
+        Point | Fanout | Derate | Cap | Trans | Location | Incr | Path
+        对短行（如 clock/data arrival）仅提取 point，并交由 _parseNumericColumns 补 Incr/Path。
+        """
+        fields = self._splitByFieldGaps(line)
+        if not fields:
+            return "", {name: "" for name in self.attrs_order}
+        point = fields[0]
+        attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
+        vals = self._normalizeTokenFragments(fields[1:])
+        ordered_cols = ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path"]
+        if len(vals) >= len(ordered_cols):
+            for i, col in enumerate(ordered_cols):
+                v = vals[i]
+                attrs[col] = "" if v == "-" else v
+        else:
+            if vals:
+                # 最常见短行：clock/data required/slack 等，仅保留能稳定判断的前若干字段
+                if re.fullmatch(r"\d+", vals[0]):
+                    attrs["Fanout"] = vals[0]
+                for token in vals:
+                    if "(" in token and "," in token and ")" in token:
+                        attrs["Location"] = token
+                    elif re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
+                        attrs["Derate"] = token
+        return point, attrs
+
+    def _parseLvfByTokens(self, line: str) -> tuple[str, Dict[str, str]]:
+        """
+        LVF 行按字段分隔解析（不按列位置切片）：
+        Point | Fanout | Derate | Cap | D-Trans | Trans(Mean/Sensit/Value)
+        | Location | Delta | Incr(Mean/Sensit/Value) | Path(Mean/Sensit/Value)
+        """
+        fields = self._splitByFieldGaps(line)
+        attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
+        if not fields:
+            return "", attrs
+        point = fields[0]
+        vals = self._normalizeTokenFragments(fields[1:])
+        ordered_cols = [
+            "Fanout",
+            "Derate",
+            "Cap",
+            "D-Trans",
+            "TransMean",
+            "TransSensit",
+            "TransValue",
+            "Location",
+            "Delta",
+            "IncrMean",
+            "IncrSensit",
+            "IncrValue",
+            "PathMean",
+            "PathSensit",
+            "PathValue",
+        ]
+        if len(vals) >= len(ordered_cols):
+            for i, col in enumerate(ordered_cols):
+                v = vals[i]
+                attrs[col] = "" if v == "-" else v
+        else:
+            # 短行（clock/arrival/required/slack）：至少可稳定抽取末尾 Incr/Path 值
+            if len(vals) >= 2:
+                attrs["IncrValue"] = vals[-2]
+                attrs["PathValue"] = vals[-1]
+            elif len(vals) == 1:
+                attrs["PathValue"] = vals[-1]
+            if vals and re.fullmatch(r"\d+", vals[0]):
+                attrs["Fanout"] = vals[0]
+            for token in vals:
+                if "(" in token and "," in token and ")" in token:
+                    attrs["Location"] = token
+                elif re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
+                    attrs["Derate"] = token
+        # 兼容字段回填
+        attrs["Trans"] = attrs["TransValue"]
+        attrs["Incr"] = attrs["IncrValue"]
+        attrs["Path"] = attrs["PathValue"]
+        attrs["DerateA"], attrs["DerateB"] = self._splitDerateValues(attrs["Derate"])
         return point, attrs
 
     @staticmethod
@@ -352,31 +410,11 @@ class Format1Parser(TimeParser):
     def _parsePointAttrs(self, line: str, table_info: dict[str, Any], row_kind: str) -> tuple[str, Dict[str, str]]:
         """按表格模式解析单行属性，并对 LVF 字段做兼容回填。"""
         mode = str((table_info or {}).get("mode") or "classic")
-        col_pos = dict((table_info or {}).get("col_pos") or {})
         if mode == "lvf":
-            point, raw_attrs = self._parseByPositions(line, col_pos)
-            attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
-            for key in ("Fanout", "Derate", "Cap", "D-Trans", "Location", "Delta"):
-                attrs[key] = raw_attrs.get(key, "")
-            for key in (
-                "TransMean",
-                "TransSensit",
-                "TransValue",
-                "IncrMean",
-                "IncrSensit",
-                "IncrValue",
-                "PathMean",
-                "PathSensit",
-                "PathValue",
-            ):
-                attrs[key] = raw_attrs.get(key, "")
-            attrs["Trans"] = attrs["TransValue"]
-            attrs["Incr"] = attrs["IncrValue"]
-            attrs["Path"] = attrs["PathValue"]
-            attrs["DerateA"], attrs["DerateB"] = self._splitDerateValues(attrs["Derate"])
+            point, attrs = self._parseLvfByTokens(line)
             return point, attrs
 
-        point, attrs = self.parseFixedWidthAttrs(line, col_pos, ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path"])
+        point, attrs = self._parseClassicByTokens(line)
         merged: Dict[str, str] = {name: "" for name in self.attrs_order}
         for key, value in attrs.items():
             merged[key] = value
@@ -387,7 +425,7 @@ class Format1Parser(TimeParser):
                 row_kind = "net"
             else:
                 row_kind = "pin"
-        smart_numeric = self._parseNumericColumns(line, col_pos, row_kind)
+        smart_numeric = self._parseNumericColumns(line, row_kind)
         if smart_numeric:
             for col, val in smart_numeric.items():
                 if val:
@@ -420,7 +458,6 @@ class Format1Parser(TimeParser):
     def _parseNumericColumns(
         self,
         line: str,
-        col_pos: dict[str, int],
         row_kind: str,
     ) -> Dict[str, str] | None:
         """  row_kind         Incr/Path         """
