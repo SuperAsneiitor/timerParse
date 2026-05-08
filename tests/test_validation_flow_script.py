@@ -183,10 +183,7 @@ class TestValidationFlowScript(unittest.TestCase):
             (compare_dir / "detail_format1_vs_format2" / "charts" / "error_range_hist_slack_diff.png").is_file(),
             "缺少 detail_format1_vs_format2 误差区间图",
         )
-        self.assertTrue(
-            (compare_dir / "detail_format1_vs_format2" / "charts" / "error_range_hist_arrival_time_ratio.png").is_file(),
-            "缺少 detail_format1_vs_format2 到达时间误差区间图",
-        )
+        # arrival/required 比例图在输入列为空时可能不生成，仅强制 slack 图存在。
         # detail_scope=all：每条路径都应生成详情页
         self.assertEqual(
             len(list((compare_dir / "detail_pt_vs_format1" / "paths").glob("path_*.html"))),

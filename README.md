@@ -266,6 +266,10 @@ LVF 与非 LVF 的使用建议：
 | `-o` / `--output` | 输出 `.rpt` 路径（默认按 format 写到 `output/gen_<format>_timing_report.rpt`） |
 | `-s` / `--seed N` | 随机种子（可复现） |
 
+字段约束补充（最新）：
+- `format2` 的 `Voltage` 仅在 `pin/port` 行生成与解析；`clock/net/constraint/required/arrival/slack` 不应带 `Voltage`。
+- `pt` 的 `Voltage` 仅在 `pin/port` 行生成与解析；`clock/net/library/required/arrival` 不应带 `Voltage`。
+
 ### 10.7 验证脚本（可选）
 
 | 脚本 | 说明 |

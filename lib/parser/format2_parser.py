@@ -104,12 +104,12 @@ class Format2Parser(TimeParser):
         "input_pin": ["Type", "D-Trans", "Trans", "Derate", "Voltage", "DerateA", "DerateB", "x-coord", "y-coord", "D-Delay", "Delay", "Time", "trigger_edge", "Description"],
         "output_pin": ["Type", "Trans", "Derate", "Voltage", "DerateA", "DerateB", "x-coord", "y-coord", "Delay", "Time", "trigger_edge", "Description"],
         "net": ["Type", "Fanout", "Cap", "Description"],
-        "clock": ["Type", "Voltage", "Delay", "Time", "Description"],
+        "clock": ["Type", "Delay", "Time", "Description"],
         "port": ["Type", "Trans", "Voltage", "x-coord", "y-coord", "Delay", "Time", "trigger_edge", "Description"],
-        "constraint": ["Type", "Voltage", "Delay", "Time", "Description"],
-        "required": ["Type", "Voltage", "Time", "Description"],
-        "arrival": ["Type", "Voltage", "Time", "Description"],
-        "slack": ["Type", "Voltage", "Time", "Description"],
+        "constraint": ["Type", "Delay", "Time", "Description"],
+        "required": ["Type", "Time", "Description"],
+        "arrival": ["Type", "Time", "Description"],
+        "slack": ["Type", "Time", "Description"],
     }
 
     _re_path_start = re.compile(r"^\s*Path Start\s+:\s+(.+?)\s+\(\s*flip-flop[^)]*,\s*(\w+)\s*\)\s*$")
@@ -550,7 +550,6 @@ class Format2Parser(TimeParser):
     def _parseNet(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
         tokens = content.split()
         if len(tokens) < 2:
             return "", attrs
@@ -569,7 +568,6 @@ class Format2Parser(TimeParser):
     def _parseClock(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
         layout_vals = self._layout_runtime.extractByTypeLayout("clock", content)
         attrs["Delay"] = layout_vals.get("Delay", "")
         attrs["Time"] = layout_vals.get("Time", "")
@@ -602,7 +600,6 @@ class Format2Parser(TimeParser):
     def _parseConstraint(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
         layout_vals = self._layout_runtime.extractByTypeLayout("constraint", content)
         attrs["Delay"] = layout_vals.get("Delay", "")
         attrs["Time"] = layout_vals.get("Time", "")
@@ -613,7 +610,6 @@ class Format2Parser(TimeParser):
     def _parseEndpoint(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
         layout_vals = self._layout_runtime.extractByTypeLayout("endpoint", content)
         point = _descToPoint(layout_vals.get("point", "") or self._descFromContent(content, col_pos))
         attrs["Description"] = point
@@ -622,7 +618,6 @@ class Format2Parser(TimeParser):
     def _parseRequired(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
         layout_vals = self._layout_runtime.extractByTypeLayout("required", content)
         attrs["Time"] = layout_vals.get("Time", "")
         point = _descToPoint(layout_vals.get("point", ""))
@@ -632,7 +627,6 @@ class Format2Parser(TimeParser):
     def _parseArrival(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
         layout_vals = self._layout_runtime.extractByTypeLayout("arrival", content)
         attrs["Time"] = layout_vals.get("Time", "")
         point = _descToPoint(layout_vals.get("point", ""))

@@ -9,7 +9,7 @@
 | 项目 | format1 (APR) | format2 | pt (PrimeTime) |
 |------|----------------|--------|-----------------|
 | **Title 形式** | `  Startpoint: ...`<br>`  Endpoint: ...`<br>`  Common Pin: ...`<br>`  Scenario: ...`<br>`  Path Group: ...`<br>`  Path Type: ...` | `  Scenario                :  value`<br>`  Path Start              :  value`<br>`  Path End                :  value`<br>`  Common Pin         :  value`<br>`  Group Name          :  value`<br>`  Analysis Type         :  value` | `  Startpoint: ...`（可多行）<br>`  Endpoint: ...`（可多行）<br>`  Path Group: ...`<br>`  Path Type: ...` |
-| **表头列** | Point, Fanout, Cap, Trans, Location, Incr, Path | Type, Fanout, Cap, D-Trans, Trans, Derate, x-coord, y-coord, D-Delay, Delay, Time, Description | Point, Fanout, Cap, Trans, Derate, Mean, Sensit, Incr, Path |
+| **表头列** | Point, Fanout, Derate, Cap, DTrans, Trans, Delta, Incr, Path | Type, Fanout, Cap, D-Trans, Trans, Derate, Voltage, D-Delay, Delay, Time, Description | Fanout, Cap, DTrans, Trans, Derate, Delta, Incr, Path, Voltage, Point |
 | **首列** | Point（点名一整列） | Type（clock/pin/net/…） | Point（点名一整列） |
 | **累加关系** | **Path = cumsum(Incr)** | **Time = cumsum(Delay)** | **Path = cumsum(Incr)** |
 | **trigger** | Path 列末位 r/f | Description 前 `/` 或 `\` 表示 r/f | Path 列末位 r/f |
@@ -59,7 +59,7 @@ table:
 |------|------------|----------------|
 | **format2** | 完整支持：Title（Scenario, Path Start, Path End, Common Pin, Group Name, Analysis Type）、表头与列顺序、Type/Fanout/Cap/Delay/Time/Description、累加 Time=cumsum(Delay)、分隔线。 | 可选：x-coord/y-coord 为 `{ x y }` 或纯数字由配置决定；Description 中 `/`、`\` 与 trigger 的对应关系与真实报告一致。 |
 | **format1** | 支持 Title（Startpoint, Endpoint, Common Pin, Scenario, Path Group, Path Type）、表头 Point + Fanout/Cap/Trans/Location/Incr/Path、Path=cumsum(Incr)。 | 需在 YAML 中配置 column_order 为 format1 列顺序；Point 列由 Description/point 提供；真实报告中 “Point” 为整列点名，生成器用统一列配置输出。 |
-| **pt** | 支持 Title（Startpoint, Endpoint, Path Group, Path Type）、表头 Point + Fanout/Cap/Trans/Derate/Incr/Path、Path=cumsum(Incr)。 | Startpoint/Endpoint 多行样式可选；列顺序与 format1 类似但无 Location、有 Derate。 |
+| **pt** | 支持 Title（Startpoint, Endpoint, Path Group, Path Type）、表头 Fanout/Cap/DTrans/Trans/Derate/Delta/Incr/Path/Voltage/Point、Path=cumsum(Incr)。 | Startpoint/Endpoint 多行样式可选；`Voltage` 仅 pin/port 行有效。 |
 
 ---
 
@@ -90,10 +90,11 @@ table:
   - PT/format1：关键词在行首，数值在关键词后；从关键词后面的数值中取倒数第二个作为增量（Incr）；  
   - format2：关键词在行尾 Description 中，数值在左侧 Delay/Time 列；若关键词后无数值，则从关键词前的整行数值中取倒数第二个作为增量（Delay）。
 - PT 生成器与解析器对 capture 段进行了对齐：capture_path 的最后一个点为 Endpoint 的时钟端 CK，`clock reconvergence pessimism` 与 `clock uncertainty` 只出现在 summary 段，不再混入 capture 点表。
-- compare 统计新增固定误差分桶（`error_range_stats`）：
-  - `arrival_time_ratio` / `required_time_ratio`：`[0,5)`, `[5,10)`, `[10,20)`, `[20,50)`, `>50`（按绝对值，单位 `%`）
-  - `slack_diff`：`[0,5)`, `[5,10)`, `[10,20)`, `>20`（按绝对值）
-  - HTML 汇总页按转置方式展示分桶占比：`arrival/required` 同表、`slack_diff` 单表。
+- compare 统计新增固定误差区间（`error_range_stats`）：
+  - `arrival_time_ratio` / `required_time_ratio`（`(test-ref)/ref`）：`[-∞,-20%],[-20%,-15%],[-15%,-10%],[-10%,-5%],[-5%,0%],[0%,5%],[5%,10%],[10%,15%],[15%,20%],[20%,∞]`
+  - `slack_diff`（`test-ref`）：`[-∞,-20],[-20,-15],[-15,-10],[-10,-5],[-5,0],[0,5],[5,10],[10,15],[15,20],[20,∞]`（图中标注 `ps`）
+  - HTML 汇总页按转置方式展示“误差区间占比统计”；三张 `error_range_hist_*` 图嵌入该统计模块。
+- `Voltage` 字段约束：仅 `pin/port` 行保留；非 pin/port 行（如 clock/net/constraint/required/arrival/slack）强制为空。
 
 ### 推荐命令（不覆盖输出）
 
