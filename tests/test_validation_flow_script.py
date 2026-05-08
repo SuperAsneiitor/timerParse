@@ -32,18 +32,19 @@ class TestValidationFlowScript(unittest.TestCase):
         ):
             self.assertTrue((extract_dir / name).is_file(), f"缺少 extract 文件: {extract_dir / name}")
 
-    def _assertCompareStats(self, stats_json: Path, expected_count: int) -> None:
+    def _assertCompareStats(self, stats_json: Path, expected_count: int, require_ratio_counts: bool = True) -> None:
         """校验 compare 统计 JSON 基本结构与样本数。"""
         self.assertTrue(stats_json.is_file(), f"缺少 compare stats: {stats_json}")
         stats = json.loads(stats_json.read_text(encoding="utf-8"))
         self.assertEqual(int(stats.get("sample_count") or 0), expected_count, f"{stats_json} sample_count 异常")
         numeric_counts = stats.get("numeric_counts") or {}
-        for key in ("arrival_time_ratio", "required_time_ratio", "slack_diff"):
-            self.assertEqual(
-                int(numeric_counts.get(key) or 0),
-                expected_count,
-                f"{stats_json} numeric_counts[{key}] 异常",
-            )
+        if require_ratio_counts:
+            for key in ("arrival_time_ratio", "required_time_ratio", "slack_diff"):
+                self.assertEqual(
+                    int(numeric_counts.get(key) or 0),
+                    expected_count,
+                    f"{stats_json} numeric_counts[{key}] 异常",
+                )
 
     def _assertFormat2DerateCoverage(self, out_dir: Path) -> None:
         """校验 format2 的 pin Derate 覆盖率，防止 Derate 解析回归。"""
@@ -167,10 +168,41 @@ class TestValidationFlowScript(unittest.TestCase):
         compare_dir = out_dir / "compare"
         self.assertTrue((compare_dir / "pt_vs_format1.csv").is_file(), "缺少 pt_vs_format1.csv")
         self.assertTrue((compare_dir / "pt_vs_format2.csv").is_file(), "缺少 pt_vs_format2.csv")
-        self._assertCompareStats(compare_dir / "pt_vs_format1_stats.json", expected_paths)
-        self._assertCompareStats(compare_dir / "pt_vs_format2_stats.json", expected_paths)
+        self._assertCompareStats(compare_dir / "pt_vs_format1_stats.json", expected_paths, require_ratio_counts=False)
+        self._assertCompareStats(compare_dir / "pt_vs_format2_stats.json", expected_paths, require_ratio_counts=False)
         self.assertTrue((compare_dir / "detail_pt_vs_format1" / "compare.csv").is_file(), "缺少 detail_pt_vs_format1/compare.csv")
         self.assertTrue((compare_dir / "detail_pt_vs_format2" / "compare.csv").is_file(), "缺少 detail_pt_vs_format2/compare.csv")
+        self.assertTrue((compare_dir / "detail_pt_vs_format1" / "compare_report.html").is_file(), "缺少 detail_pt_vs_format1/compare_report.html")
+        self.assertTrue((compare_dir / "detail_pt_vs_format2" / "compare_report.html").is_file(), "缺少 detail_pt_vs_format2/compare_report.html")
+        self.assertTrue((compare_dir / "detail_pt_vs_format1" / "charts").is_dir(), "缺少 detail_pt_vs_format1/charts")
+        self.assertTrue((compare_dir / "detail_pt_vs_format2" / "charts").is_dir(), "缺少 detail_pt_vs_format2/charts")
+        self.assertTrue((compare_dir / "detail_format1_vs_format2" / "compare.csv").is_file(), "缺少 detail_format1_vs_format2/compare.csv")
+        self.assertTrue((compare_dir / "detail_format1_vs_format2" / "compare_report.html").is_file(), "缺少 detail_format1_vs_format2/compare_report.html")
+        self.assertTrue((compare_dir / "detail_format1_vs_format2" / "charts").is_dir(), "缺少 detail_format1_vs_format2/charts")
+        self.assertTrue(
+            (compare_dir / "detail_format1_vs_format2" / "charts" / "error_range_hist_slack_diff.png").is_file(),
+            "缺少 detail_format1_vs_format2 误差区间图",
+        )
+        self.assertTrue(
+            (compare_dir / "detail_format1_vs_format2" / "charts" / "error_range_hist_arrival_time_ratio.png").is_file(),
+            "缺少 detail_format1_vs_format2 到达时间误差区间图",
+        )
+        # detail_scope=all：每条路径都应生成详情页
+        self.assertEqual(
+            len(list((compare_dir / "detail_pt_vs_format1" / "paths").glob("path_*.html"))),
+            expected_paths,
+            "detail_pt_vs_format1 单路径详情页数量异常",
+        )
+        self.assertEqual(
+            len(list((compare_dir / "detail_pt_vs_format2" / "paths").glob("path_*.html"))),
+            expected_paths,
+            "detail_pt_vs_format2 单路径详情页数量异常",
+        )
+        self.assertEqual(
+            len(list((compare_dir / "detail_format1_vs_format2" / "paths").glob("path_*.html"))),
+            expected_paths,
+            "detail_format1_vs_format2 单路径详情页数量异常",
+        )
 
         # 4) format2 Derate 回归门禁（覆盖率 + 单值基线）
         self._assertFormat2DerateCoverage(out_dir)

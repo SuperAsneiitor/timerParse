@@ -21,8 +21,9 @@ class Format1Report(TimingReportTemplate):
             "Fanout": 8,
             "Derate": 10,
             "Cap": 12,
+            "DTrans": 12,
             "Trans": 12,
-            "Location": 26,
+            "Delta": 12,
             "Incr": 10,
             "Path": 10,
         }
@@ -62,7 +63,6 @@ class Format1Report(TimingReportTemplate):
                 except (TypeError, ValueError):
                     pass
 
-        # format1: port 行仅保留单个 Location 符号 "-"，其余属性按配置生成
         cells: list[str] = []
         for col in plan.column_order:
             cfg = plan.columns_config.get(col) or {}
@@ -70,9 +70,6 @@ class Format1Report(TimingReportTemplate):
             row_type = row_ctx.get("row_type", "")
             if when and row_type and row_type not in when:
                 cells.append("")
-                continue
-            if col == "Location" and rt == "port":
-                cells.append("-")
                 continue
             if col in cumulative_targets and col in row_ctx:
                 cells.append(_str_value(row_ctx[col], self.float_decimals()))

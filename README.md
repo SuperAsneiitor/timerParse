@@ -250,9 +250,11 @@ LVF 与非 LVF 的使用建议：
 | `--detail-top-n N` | `detail-scope=topN` 时生成前 N 条详情 |
 
 `compare` 的统计输出（`--stats-json`）新增 `error_range_stats`：
-- `arrival_time_ratio`、`required_time_ratio`：按误差绝对值分段 `[0,5)`, `[5,10)`, `[10,20)`, `[20,50)`, `>50`（单位 `%`），统计每段路径占比。
-- `slack_diff`：按误差绝对值分段 `[0,5)`, `[5,10)`, `[10,20)`, `>20`，统计每段路径占比。
-- HTML 报告中对应为“误差分桶占比统计”两张表：
+- `arrival_time_ratio`、`required_time_ratio`：按误差百分比 `(test-ref)/ref` 的有符号区间统计  
+  `[-∞,-20%],[-20%,-15%],[-15%,-10%],[-10%,-5%],[-5%,0%],[0%,5%],[5%,10%],[10%,15%],[15%,20%],[20%,∞]`。
+- `slack_diff`：按误差值 `test-ref` 的有符号区间统计  
+  `[-∞,-20],[-20,-15],[-15,-10],[-10,-5],[-5,0],[0,5],[5,10],[10,15],[15,20],[20,∞]`（图中标注 `ps`）。
+- HTML 报告中对应为“误差区间占比统计”两张表：
   - 一张合并展示 `arrival_time_ratio` 与 `required_time_ratio`
   - 一张单独展示 `slack_diff`
 
@@ -268,7 +270,7 @@ LVF 与非 LVF 的使用建议：
 
 | 脚本 | 说明 |
 |------|------|
-| `scripts/run_validation_flow.py` | 三格式生成 → `extract` → `compare` 全链路；`python scripts/run_validation_flow.py --jobs 4`；`config/gen_report/base.yaml` 中 **`num_paths: 100`**，覆盖 **100 条非 LVF 长路径** |
+| `scripts/run_validation_flow.py` | 三格式生成 → `extract` → `compare` 全链路；`python scripts/run_validation_flow.py --jobs 4`；默认生成 compare HTML+charts，并在 detail 目录默认 `detail_scope=all` 生成全部单路径详情页；`config/gen_report/base.yaml` 中 **`num_paths: 100`**，覆盖 **100 条非 LVF 长路径** |
 | `scripts/validate_extract_vs_chaos.py` | 对**同一份** `.rpt` 分别跑 `extract` 与 `extract-chaos`，比对五行 CSV **行数**是否一致 |
 | `scripts/run_lvf_100_validation.py` | 合成 **100 条 path** 的 **format1 LVF**（**长 `data_path`**，见 `tests/format1_lvf_synth.py`）→ `extract` / `extract-chaos` 均带 `--lvf` 并比对行数；可选 `--extra-data-groups N`；可选跑 `validate_extract_results` |
 | `scripts/validate_extract_results.py` | 校验某次 `extract` 输出目录的列与规则 |

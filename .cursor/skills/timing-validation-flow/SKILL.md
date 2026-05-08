@@ -53,12 +53,18 @@ python scripts/run_lvf_100_validation.py
 
 - `test_results/validation_flow_YYYYMMDD_HHMMSS/`
 - 子目录：`reports/`、`extract_format1/`、`extract_format2/`、`extract_pt/`、`compare/`
+- compare 详情目录：`compare/detail_pt_vs_format1/`、`compare/detail_pt_vs_format2/`
+- 图表+全量详情目录：`compare/detail_format1_vs_format2/`
+  - 默认生成 `compare_report.html` + `charts/` 图表目录
+  - 默认 `detail_scope=all`，生成全部单路径详情页（`paths/path_*.html`）
 
 ## Checklist
 
 - [ ] `reports/` 下存在三份 `.rpt`
 - [ ] 每个 extract 目录包含五行 CSV：`launch_path.csv`、`capture_path.csv`、`launch_clock_path.csv`、`data_path.csv`、`path_summary.csv`
 - [ ] `compare/` 下存在 `pt_vs_format1.csv`、`pt_vs_format2.csv` 及 stats JSON
+- [ ] `compare/detail_pt_vs_format1/`、`compare/detail_pt_vs_format2/`、`compare/detail_format1_vs_format2/` 下存在 `compare_report.html`、`charts/`
+- [ ] `paths/` 下单路径详情页数量与 `path_summary.csv` 一致（默认 all）
 - [ ] 涉及 LVF 时，`run_lvf_100_validation.py` 结果为 OK
 - [ ] 结果可复盘（命令、目录、关键行数已记录）
 

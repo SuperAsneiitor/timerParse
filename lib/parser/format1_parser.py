@@ -27,11 +27,11 @@ class Format1Parser(TimeParser):
         "DerateB",
         "Cap",
         "D-Trans",
+        "DTrans",
         "TransMean",
         "TransSensit",
         "TransValue",
         "Trans",
-        "Location",
         "Delta",
         "IncrMean",
         "IncrSensit",
@@ -52,11 +52,11 @@ class Format1Parser(TimeParser):
             "DerateB",
             "Cap",
             "D-Trans",
+            "DTrans",
             "TransMean",
             "TransSensit",
             "TransValue",
             "Trans",
-            "Location",
             "Delta",
             "IncrMean",
             "IncrSensit",
@@ -74,11 +74,11 @@ class Format1Parser(TimeParser):
             "DerateB",
             "Cap",
             "D-Trans",
+            "DTrans",
             "TransMean",
             "TransSensit",
             "TransValue",
             "Trans",
-            "Location",
             "Delta",
             "IncrMean",
             "IncrSensit",
@@ -316,7 +316,7 @@ class Format1Parser(TimeParser):
     def _parseClassicByTokens(self, line: str) -> tuple[str, Dict[str, str]]:
         """
         classic 行按字段分隔解析：
-        Point | Fanout | Derate | Cap | Trans | Location | Incr | Path
+        Point | Fanout | Derate | Cap | DTrans | Trans | Delta | Incr | Path
         对短行（如 clock/data arrival）仅提取 point，并交由 _parseNumericColumns 补 Incr/Path。
         """
         fields = self._splitByFieldGaps(line)
@@ -325,21 +325,25 @@ class Format1Parser(TimeParser):
         point = fields[0]
         attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
         vals = self._normalizeTokenFragments(fields[1:])
-        ordered_cols = ["Fanout", "Derate", "Cap", "Trans", "Location", "Incr", "Path"]
+        ordered_cols = ["Fanout", "Derate", "Cap", "DTrans", "Trans", "Delta", "Incr", "Path"]
         if len(vals) >= len(ordered_cols):
             for i, col in enumerate(ordered_cols):
                 v = vals[i]
                 attrs[col] = "" if v == "-" else v
         else:
             if vals:
-                # 最常见短行：clock/data required/slack 等，仅保留能稳定判断的前若干字段
-                if re.fullmatch(r"\d+", vals[0]):
+                # 兼容旧格式：Point/Fanout/Derate/Cap/Trans/[Location]/Incr/Path
+                if len(vals) >= 6 and re.fullmatch(r"\d+", vals[0]):
                     attrs["Fanout"] = vals[0]
+                    attrs["Derate"] = vals[1] if len(vals) > 1 else ""
+                    attrs["Cap"] = vals[2] if len(vals) > 2 else ""
+                    attrs["Trans"] = vals[3] if len(vals) > 3 else ""
+                    attrs["Incr"] = vals[-2]
+                    attrs["Path"] = vals[-1]
                 for token in vals:
-                    if "(" in token and "," in token and ")" in token:
-                        attrs["Location"] = token
-                    elif re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
+                    if re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
                         attrs["Derate"] = token
+        attrs["D-Trans"] = attrs.get("DTrans", "")
         return point, attrs
 
     def _parseLvfByTokens(self, line: str) -> tuple[str, Dict[str, str]]:
@@ -358,7 +362,7 @@ class Format1Parser(TimeParser):
             "Fanout",
             "Derate",
             "Cap",
-            "D-Trans",
+            "DTrans",
             "TransMean",
             "TransSensit",
             "TransValue",
@@ -385,12 +389,11 @@ class Format1Parser(TimeParser):
             if vals and re.fullmatch(r"\d+", vals[0]):
                 attrs["Fanout"] = vals[0]
             for token in vals:
-                if "(" in token and "," in token and ")" in token:
-                    attrs["Location"] = token
-                elif re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
+                if re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
                     attrs["Derate"] = token
         # 兼容字段回填
         attrs["Trans"] = attrs["TransValue"]
+        attrs["D-Trans"] = attrs["DTrans"]
         attrs["Incr"] = attrs["IncrValue"]
         attrs["Path"] = attrs["PathValue"]
         attrs["DerateA"], attrs["DerateB"] = self._splitDerateValues(attrs["Derate"])

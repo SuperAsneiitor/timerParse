@@ -29,23 +29,22 @@ title:
 table:
   separator: "--------------------------------------------------------------------------------------------------------"
   cumulative_rules: { Path: Incr }
-  column_order: [Point, Fanout, Cap, Trans, Derate, Mean, Sensit, Incr, Path]
+  column_order: [Fanout, Cap, DTrans, Trans, Derate, Delta, Incr, Path, Voltage, Point]
   columns:
-    Point: { value: { type: ref, ref: point } }
     Fanout: { value: { type: random_int, min: 1, max: 6 }, profiles: [net_rows] }
     Cap: { value: { type: random_float, min: 0.000, max: 0.050, decimals: 2 }, profiles: [net_rows] }
+    DTrans: { value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }, when_type: [pin, input_pin, output_pin, port] }
     Trans: { value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }, when_type: [pin, input_pin, output_pin, port] }
     Derate: { value: { type: fixed, value: "1.1000" }, profiles: [pin_rows] }
-    Mean:
-      value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
+    Delta:
+      value: { type: random_float, min: -0.0200, max: 0.0200, decimals: 4 }
       when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint, port]
-    Sensit:
-      value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
-      when_type: [clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint, port]
     Incr:
       value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
       when_type: [clock, pin, input_pin, output_pin, net, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, port]
     Path: { value: { type: fixed, value: "" } }
+    Voltage: { value: { type: random_float, min: 0.7000, max: 1.1000, decimals: 4 } }
+    Point: { value: { type: ref, ref: point } }
 
 summary_policy:
   statistical_adjustment:

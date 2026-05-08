@@ -46,15 +46,16 @@ class PtReport(TimingReportTemplate):
 
     def default_column_widths(self, column_order: list[str]) -> dict[str, int]:
         defaults = {
-            "Point": 56,
             "Fanout": 12,
             "Cap": 8,
+            "DTrans": 8,
             "Trans": 8,
             "Derate": 10,
-            "Mean": 10,
-            "Sensit": 10,
+            "Delta": 10,
             "Incr": 10,
             "Path": 10,
+            "Voltage": 10,
+            "Point": 56,
         }
         return {c: defaults.get(c, 16) for c in column_order}
 
@@ -85,11 +86,11 @@ class PtReport(TimingReportTemplate):
         v = _to_float(incr_val)
         return f"{v:.4f} &"
 
-    PT_FLOAT_COLS = ("Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path")
+    PT_FLOAT_COLS = ("Cap", "DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage")
     PT_FANOUT_COL = "Fanout"
 
     def _pt_cell_str(self, col: str, val: Any) -> str:
-        """PT 格式：Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+        """PT 格式：Fanout 整数，关键浮点列保留 4 位小数。"""
         if val is None or val == "":
             return ""
         if col == self.PT_FANOUT_COL:
@@ -109,7 +110,7 @@ class PtReport(TimingReportTemplate):
         return "" if val is None else str(val)
 
     def render_row(self, plan, row_ctx: dict[str, Any], cumulative_targets: set[str], cumulative_sources: set[str]) -> str:
-        """PT：表体列 Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+        """PT：表体列 Fanout 整数，关键浮点列保留 4 位小数。"""
         from .base import RenderPlan, ValueResolver, _str_value
         cells: list[str] = []
         for col in plan.column_order:

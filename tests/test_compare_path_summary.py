@@ -135,6 +135,9 @@ class TestComparePathSummary(unittest.TestCase):
             "scatter_arrival_time_ratio_vs_required_time_ratio.png",
             "scatter_arrival_time_ratio_vs_slack_diff.png",
             "scatter_required_time_ratio_vs_slack_diff.png",
+            "error_range_hist_slack_diff.png",
+            "error_range_hist_required_time_ratio.png",
+            "error_range_hist_arrival_time_ratio.png",
         ]
         for name in expected_chart_files:
             self.assertTrue((charts_dir / name).is_file(), msg=f"missing chart: {name}")
@@ -142,7 +145,9 @@ class TestComparePathSummary(unittest.TestCase):
         html_text = html.read_text(encoding="utf-8")
         self.assertIn("统计摘要", html_text)
         self.assertIn("阈值超限摘要", html_text)
-        self.assertIn("相关性摘要", html_text)
+        self.assertNotIn("相关性摘要", html_text)
+        self.assertIn("误差区间占比统计（arrival/required）", html_text)
+        self.assertIn("误差区间占比统计（slack_diff）", html_text)
         self.assertIn("图表", html_text)
         self.assertIn("%", html_text)
 

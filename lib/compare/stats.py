@@ -35,44 +35,57 @@ def _to_number_list(rows: List[Dict[str, str]], key: str) -> List[float]:
     return vals
 
 
-def _buildErrorRangeBuckets(
+def _buildSignedErrorRangeBuckets(
     values: List[float],
-    range_edges: List[float],
-    use_abs: bool = True,
+    inner_edges: List[float],
+    unit_suffix: str = "",
 ) -> List[Dict[str, float | int | str]]:
-    """按固定区间统计误差分布占比，并附加最后一个 >max 桶。"""
+    """按有符号区间统计误差分布占比（含两侧无穷桶）。"""
     if not values:
         return []
-    if not range_edges or len(range_edges) < 2:
+    if not inner_edges or len(inner_edges) < 2:
         return []
-
-    normalized = [abs(v) if use_abs else v for v in values]
-    total = len(normalized)
+    total = len(values)
     buckets: List[Dict[str, float | int | str]] = []
+    sorted_edges = [float(v) for v in inner_edges]
 
-    for i in range(len(range_edges) - 1):
-        lo = float(range_edges[i])
-        hi = float(range_edges[i + 1])
-        count = sum(1 for v in normalized if lo <= v < hi)
+    lo_tail = sorted_edges[0]
+    lo_count = sum(1 for v in values if v <= lo_tail)
+    buckets.append(
+        {
+            "range": f"[-∞,{lo_tail:g}{unit_suffix}]",
+            "lower": None,
+            "upper": _round3(lo_tail),
+            "count": lo_count,
+            "ratio": _round3((lo_count / total) if total else 0.0),
+        }
+    )
+
+    for i in range(len(sorted_edges) - 1):
+        lo = sorted_edges[i]
+        hi = sorted_edges[i + 1]
+        if i == len(sorted_edges) - 2:
+            count = sum(1 for v in values if lo < v <= hi)
+        else:
+            count = sum(1 for v in values if lo < v <= hi)
         buckets.append(
             {
-                "range": f"[{lo:g},{hi:g})",
+                "range": f"[{lo:g}{unit_suffix},{hi:g}{unit_suffix}]",
                 "lower": _round3(lo),
                 "upper": _round3(hi),
                 "count": count,
                 "ratio": _round3((count / total) if total else 0.0),
             }
         )
-
-    max_edge = float(range_edges[-1])
-    tail_count = sum(1 for v in normalized if v >= max_edge)
+    hi_tail = sorted_edges[-1]
+    hi_count = sum(1 for v in values if v > hi_tail)
     buckets.append(
         {
-            "range": f">{max_edge:g}",
-            "lower": _round3(max_edge),
+            "range": f"[{hi_tail:g}{unit_suffix},∞]",
+            "lower": _round3(hi_tail),
             "upper": None,
-            "count": tail_count,
-            "ratio": _round3((tail_count / total) if total else 0.0),
+            "count": hi_count,
+            "ratio": _round3((hi_count / total) if total else 0.0),
         }
     )
     return buckets
@@ -224,36 +237,37 @@ def compute_stats(
     slack_unknown_count = max(0, len(rows) - slack_total)
     slack_pass_ratio = (slack_pass_count / slack_total) if slack_total else 0.0
 
-    # 新增：误差分桶占比统计
+    # 新增：误差分桶占比统计（按用户指定区间）
+    signed_edges = [-20, -15, -10, -5, 0, 5, 10, 15, 20]
     error_range_stats = {
         "arrival_time_ratio": {
-            "abs_value": True,
-            "ranges": [0, 5, 10, 20, 50],
+            "abs_value": False,
+            "ranges": signed_edges,
             "unit": "%",
-            "bins": _buildErrorRangeBuckets(
+            "bins": _buildSignedErrorRangeBuckets(
                 _to_number_list(rows, "arrival_time_ratio"),
-                range_edges=[0, 5, 10, 20, 50],
-                use_abs=True,
+                inner_edges=signed_edges,
+                unit_suffix="%",
             ),
         },
         "required_time_ratio": {
-            "abs_value": True,
-            "ranges": [0, 5, 10, 20, 50],
+            "abs_value": False,
+            "ranges": signed_edges,
             "unit": "%",
-            "bins": _buildErrorRangeBuckets(
+            "bins": _buildSignedErrorRangeBuckets(
                 _to_number_list(rows, "required_time_ratio"),
-                range_edges=[0, 5, 10, 20, 50],
-                use_abs=True,
+                inner_edges=signed_edges,
+                unit_suffix="%",
             ),
         },
         "slack_diff": {
-            "abs_value": True,
-            "ranges": [0, 5, 10, 20],
-            "unit": "abs",
-            "bins": _buildErrorRangeBuckets(
+            "abs_value": False,
+            "ranges": signed_edges,
+            "unit": "value",
+            "bins": _buildSignedErrorRangeBuckets(
                 _to_number_list(rows, "slack_diff"),
-                range_edges=[0, 5, 10, 20],
-                use_abs=True,
+                inner_edges=signed_edges,
+                unit_suffix="",
             ),
         },
     }

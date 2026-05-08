@@ -121,7 +121,7 @@ def generate_html_report(
 
     结构：
     - 基本信息（输入文件、样本数）
-    - 比例列统计摘要 + 阈值超限摘要 + 相关性摘要
+    - 比例列统计摘要 + 阈值超限摘要
     - 段级差值统计（launch/data delay + CRP/uncertainty）
     - 简要路径列表（每条路径一行，可在后续版本扩展为点击查看明细）
     - 图表区域（hist/boxplot/scatter）
@@ -327,13 +327,6 @@ def generate_html_report(
             f"<td>{_fmt_percent_value((t.get('ratio') or 0.0) * 100)}</td></tr>"
         )
 
-    # 相关性摘要
-    rows_corr = []
-    for pair, data in stats.get("correlations", {}).items():
-        rows_corr.append(
-            f"<tr><td>{pair}</td><td>{data.get('count')}</td><td>{data.get('pearson')}</td></tr>"
-        )
-
     # 段级差值统计（launch/data delay + CRP/uncertainty）
     rows_segment_stats = []
     for metric, data in (stats.get("segment_metrics") or {}).items():
@@ -345,7 +338,7 @@ def generate_html_report(
             f"<td>{_fmt_plain(data.get('p95'))}</td><td>{_fmt_plain(data.get('p99'))}</td></tr>"
         )
 
-    # 新增：误差分桶占比统计（转置展示，减少冗余）
+    # 新增：误差区间占比统计（转置展示，减少冗余）
     error_stats = stats.get("error_range_stats") or {}
     arr_bins = (error_stats.get("arrival_time_ratio") or {}).get("bins") or []
     req_bins = (error_stats.get("required_time_ratio") or {}).get("bins") or []
@@ -537,11 +530,35 @@ def generate_html_report(
     first_page_table = _render_rows_table(sorted_rows[:page_size], page_idx=0)
     first_nav = _render_nav_links(1, total_pages).replace("page_", "pages/page_")
 
+    def _chart_card(key: str) -> str:
+        name = chart_files.get(key)
+        if not name:
+            return ""
+        rel = Path(charts_dir.name) / name
+        return (
+            "<div style='flex:1 1 420px;min-width:320px;border:1px solid #ddd;border-radius:8px;padding:10px;background:#fafafa'>"
+            f"<h3 style='margin:4px 0 10px 0'>{key}</h3>"
+            f"<img class='zoomable-chart' src='{rel.as_posix()}' alt='{key}' style='max-width:100%;height:auto;display:block;margin:0 auto;cursor:zoom-in;' />"
+            "</div>"
+        )
+
+    error_range_cards = []
+    for key in [
+        "error_range_hist_slack_diff",
+        "error_range_hist_required_time_ratio",
+        "error_range_hist_arrival_time_ratio",
+    ]:
+        card = _chart_card(key)
+        if card:
+            error_range_cards.append(card)
+
     chart_tags = []
     for key, name in chart_files.items():
+        if key.startswith("error_range_hist_"):
+            continue
         rel = Path(charts_dir.name) / name
         chart_tags.append(
-            f"<h3>{key}</h3><img src='{rel.as_posix()}' alt='{key}' style='max-width:100%;height:auto;' />"
+            f"<h3>{key}</h3><img class='zoomable-chart' src='{rel.as_posix()}' alt='{key}' style='max-width:100%;height:auto;cursor:zoom-in;' />"
         )
 
     html = f"""<!DOCTYPE html>
@@ -554,6 +571,25 @@ def generate_html_report(
     table {{ border-collapse: collapse; width: 100%; margin-bottom: 18px; }}
     th, td {{ border: 1px solid #ccc; padding: 6px 8px; font-size: 13px; }}
     th {{ background: #f3f3f3; text-align: left; }}
+    .zoom-overlay {{
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.86);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      cursor: zoom-out;
+    }}
+    .zoom-overlay img {{
+      max-width: 96vw;
+      max-height: 96vh;
+      width: auto;
+      height: auto;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+      border-radius: 6px;
+      background: #fff;
+    }}
   </style>
 </head>
 <body>
@@ -585,30 +621,27 @@ def generate_html_report(
     {''.join(rows_threshold)}
   </table>
 
-  <h2>相关性摘要</h2>
-  <table>
-    <tr><th>pair</th><th>count</th><th>pearson</th></tr>
-    {''.join(rows_corr)}
-  </table>
-
   <h2>段级差值摘要（launch/data delay 与 CRP/uncertainty）</h2>
   <table>
     <tr><th>metric</th><th>count</th><th>min</th><th>max</th><th>mean</th><th>median</th><th>std</th><th>p90</th><th>p95</th><th>p99</th></tr>
     {''.join(rows_segment_stats)}
   </table>
 
-  <h2>误差分桶占比统计（arrival/required）</h2>
+  <h2>误差区间占比统计（arrival/required）</h2>
   <table>
     <tr><th>metric</th>{ratio_range_headers}</tr>
     <tr><td>arrival_time_ratio</td>{ratio_arr_row}</tr>
     <tr><td>required_time_ratio</td>{ratio_req_row}</tr>
   </table>
 
-  <h2>误差分桶占比统计（slack_diff abs）</h2>
+  <h2>误差区间占比统计（slack_diff）</h2>
   <table>
     <tr><th>metric</th>{slack_range_headers}</tr>
     <tr><td>slack_diff</td>{slack_ratio_row}</tr>
   </table>
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;margin:8px 0 20px 0;">
+    {''.join(error_range_cards) if error_range_cards else '<p>误差区间直方图未生成。</p>'}
+  </div>
 
   <h2>路径列表（每条路径的核心差异）</h2>
   <p><b>分页：</b>每页 {page_size} 条；排序字段：{html_module.escape(sort_by)}（{'abs' if sort_abs else 'raw'}）。</p>
@@ -634,6 +667,25 @@ def generate_html_report(
 
   <h2>图表</h2>
   {''.join(chart_tags) if chart_tags else '<p>未生成图表。</p>'}
+  <div id="zoom-overlay" class="zoom-overlay"><img id="zoom-overlay-img" alt="zoomed chart" /></div>
+  <script>
+    (function() {{
+      const overlay = document.getElementById("zoom-overlay");
+      const overlayImg = document.getElementById("zoom-overlay-img");
+      if (!overlay || !overlayImg) return;
+      document.querySelectorAll(".zoomable-chart").forEach((img) => {{
+        img.addEventListener("dblclick", () => {{
+          overlayImg.src = img.getAttribute("src") || "";
+          overlayImg.alt = img.getAttribute("alt") || "zoomed chart";
+          overlay.style.display = "flex";
+        }});
+      }});
+      overlay.addEventListener("dblclick", () => {{
+        overlay.style.display = "none";
+        overlayImg.src = "";
+      }});
+    }})();
+  </script>
 </body>
 </html>
 """

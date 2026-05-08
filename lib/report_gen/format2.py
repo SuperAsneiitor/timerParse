@@ -24,8 +24,7 @@ class Format2Report(TimingReportTemplate):
             "D-Trans": 12,
             "Trans": 10,
             "Derate": 14,
-            "x-coord": 12,
-            "y-coord": 12,
+            "Voltage": 10,
             "D-Delay": 10,
             "Delay": 10,
             "Time": 12,
@@ -90,10 +89,6 @@ class Format2Report(TimingReportTemplate):
 
             text = _normalize_float_text(_str_value(val, self.float_decimals()))
             # 不在代码里硬编码单位；Cap 保持纯数值，单位变更通过配置/词法层处理。
-            if col == "x-coord" and text:
-                text = "{  " + text
-            elif col == "y-coord" and text:
-                text = text + "}"
             cells.append(text)
 
         parts: list[str] = []

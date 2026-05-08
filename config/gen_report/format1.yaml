@@ -29,7 +29,7 @@ title:
 table:
   separator: "---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------"
   cumulative_rules: { Path: Incr }
-  column_order: [Point, Fanout, Derate, Cap, Trans, Location, Incr, Path]
+  column_order: [Point, Fanout, Derate, Cap, DTrans, Trans, Delta, Incr, Path]
   columns:
     Point: { value: { type: ref, ref: point } }
     Fanout: { value: { type: random_int, min: 1, max: 2000 }, profiles: [net_rows] }
@@ -39,11 +39,14 @@ table:
     Cap:
       value: { type: random_float, min: 0.000, max: 0.050, decimals: 3 }
       when_type: [pin, input_pin, output_pin, port]
+    DTrans:
+      value: { type: random_float, min: 0.000, max: 0.100, decimals: 3 }
+      when_type: [pin, input_pin, output_pin, port]
     Trans:
       value: { type: random_float, min: 0.000, max: 0.100, decimals: 3 }
       when_type: [pin, input_pin, output_pin, port]
-    Location:
-      value: { type: random_coord, x_min: 200, x_max: 800, y_min: 600, y_max: 1100, decimals: 2 }
+    Delta:
+      value: { type: random_float, min: -0.100, max: 0.100, decimals: 3 }
       when_type: [pin, input_pin, output_pin, port]
     Incr:
       value: { type: random_float, min: 0.000, max: 0.060, decimals: 3 }

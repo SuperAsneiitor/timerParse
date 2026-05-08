@@ -1,16 +1,16 @@
 format: format2
 
 row_kind_numeric:
-  clock: [Delay, Time]
+  clock: [Voltage, Delay, Time]
   endpoint: []
-  constraint: [Delay, Time]
-  required: [Time]
-  arrival: [Time]
-  slack: [Time]
+  constraint: [Voltage, Delay, Time]
+  required: [Voltage, Time]
+  arrival: [Voltage, Time]
+  slack: [Voltage, Time]
   net: [Fanout, Cap, Delay, Time]
-  port: [Delay, Time]
-  input_pin: [D-Delay, Delay, Time]
-  output_pin: [Delay, Time]
+  port: [Voltage, Delay, Time]
+  input_pin: [Voltage, D-Delay, Delay, Time]
+  output_pin: [Voltage, Delay, Time]
 
 type_classify:
   - id: pin-from-type
@@ -74,25 +74,25 @@ type_classify:
 type_layouts:
   clock:
     point_from: after_last_numeric
-    tail_numeric: [Delay, Time]
+    tail_numeric: [Voltage, Delay, Time]
   constraint:
     point_from: after_last_numeric
-    tail_numeric: [Delay, Time]
+    tail_numeric: [Voltage, Delay, Time]
   endpoint:
     point_from: after_last_numeric
     tail_numeric: []
   required:
     point_from: after_last_numeric
-    tail_numeric: [Time]
+    tail_numeric: [Voltage, Time]
   arrival:
     point_from: after_last_numeric
-    tail_numeric: [Time]
+    tail_numeric: [Voltage, Time]
   slack:
     point_from: after_last_numeric
-    tail_numeric: [Time]
+    tail_numeric: [Voltage, Time]
   port:
     point_from: after_last_numeric
-    tail_numeric: [Delay, Time]
+    tail_numeric: [Voltage, Delay, Time]
   net:
     fanout_idx: 1
     cap_idx: 2

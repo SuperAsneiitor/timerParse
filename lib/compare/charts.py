@@ -66,7 +66,7 @@ def generate_charts(
     chart_files: Dict[str, str] = {}
     data = {col: _to_number_list(rows, col) for col in ratio_columns}
 
-    # 各关键列直方图
+    # 各关键列直方图（原始分布）
     for col in ratio_columns:
         vals = data[col]
         if not vals:
@@ -74,7 +74,10 @@ def generate_charts(
         plt.figure(figsize=(8, 5))
         plt.hist(vals, bins=bins)
         plt.title(f"Histogram - {col}")
-        plt.xlabel(col)
+        if col == "slack_diff":
+            plt.xlabel("slack_diff (ps)")
+        else:
+            plt.xlabel(col)
         plt.ylabel("Count")
         out = charts_dir / f"hist_{col}.png"
         plt.tight_layout()
@@ -123,6 +126,42 @@ def generate_charts(
         plt.savefig(out)
         plt.close()
         chart_files[f"scatter_{x_col}_vs_{y_col}"] = out.name
+
+    # 新增：误差区间统计直方图（按占比展示）
+    custom_bins = [-20, -15, -10, -5, 0, 5, 10, 15, 20]
+    custom_specs = [
+        ("slack_diff", "ps"),
+        ("required_time_ratio", "%"),
+        ("arrival_time_ratio", "%"),
+    ]
+    for col, unit in custom_specs:
+        vals = data.get(col) or []
+        if not vals:
+            continue
+        labels = [f"[-∞,{custom_bins[0]}{unit}]"]
+        ratios: List[float] = [sum(1 for v in vals if v <= custom_bins[0]) / len(vals)]
+        for i in range(len(custom_bins) - 1):
+            lo = custom_bins[i]
+            hi = custom_bins[i + 1]
+            labels.append(f"[{lo}{unit},{hi}{unit}]")
+            ratios.append(sum(1 for v in vals if lo < v <= hi) / len(vals))
+        labels.append(f"[{custom_bins[-1]}{unit},∞]")
+        ratios.append(sum(1 for v in vals if v > custom_bins[-1]) / len(vals))
+
+        plt.figure(figsize=(12, 5))
+        plt.bar(range(len(labels)), [r * 100.0 for r in ratios], width=0.8)
+        plt.xticks(range(len(labels)), labels, rotation=30, ha="right")
+        plt.ylabel("Ratio (%)")
+        if col == "slack_diff":
+            plt.xlabel("Slack Error Interval (ps)")
+        else:
+            plt.xlabel("Error Interval")
+        plt.title(f"Error Range Histogram - {col}")
+        plt.tight_layout()
+        out = charts_dir / f"error_range_hist_{col}.png"
+        plt.savefig(out)
+        plt.close()
+        chart_files[f"error_range_hist_{col}"] = out.name
 
     return chart_files
 

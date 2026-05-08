@@ -11,14 +11,15 @@ from typing import Any, Dict, List
 
 from .format1_parser import Format1Parser
 from .layout_runtime import LayoutRuntime
+from .time_parser_base import TimeParser
 
 
-PT_FLOAT_COLS = ("Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path")
+PT_FLOAT_COLS = ("Cap", "DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage")
 PT_FANOUT_COL = "Fanout"
 
 
 def _format_pt_metric_for_csv(col: str, val: Any) -> Any:
-    """PT 抽取 CSV：Fanout 整数，Cap/Trans/Derate/Mean/Sensit/Incr/Path 保留 4 位小数。"""
+    """PT 抽取 CSV：Fanout 整数，关键浮点列保留 4 位小数。"""
     if val is None or val == "":
         return "" if col in PT_FLOAT_COLS or col == PT_FANOUT_COL else val
     if col == PT_FANOUT_COL:
@@ -47,12 +48,12 @@ class PtParser(Format1Parser):
         super().__init__(attrs_order, attrs_by_type)
         self._layout_runtime = LayoutRuntime("pt")
 
-    default_attrs_order = ["Fanout", "Cap", "Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"]
+    default_attrs_order = ["Fanout", "Cap", "DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage", "trigger_edge"]
     skip_first_rows = 2
     default_attrs_by_type = {
         "net": ["Fanout", "Cap"],
-        "input_pin": ["Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"],
-        "output_pin": ["Trans", "Derate", "Mean", "Sensit", "Incr", "Path", "trigger_edge"],
+        "input_pin": ["DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage", "trigger_edge"],
+        "output_pin": ["DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage", "trigger_edge"],
     }
 
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")
@@ -66,15 +67,37 @@ class PtParser(Format1Parser):
     _re_last_common_pin2 = re.compile(
         r"^\s*Last\s+common\s+pin\s+(.+?)\s*$", re.IGNORECASE
     )
-    _re_point_header = re.compile(r"^\s+Point\s+", re.IGNORECASE)
+    _re_point_header = re.compile(r"^\s+(?:Point\s+|Fanout\s+)", re.IGNORECASE)
     _re_sep_line = re.compile(r"^\s+-{3,}\s*$")
-    _re_clock_rise = re.compile(r"^\s+clock\s+\S+\s+\(rise\s+edge\)\s")
-    _re_data_arrival = re.compile(r"^\s+data\s+arrival\s+time\s")
-    _re_library_setup = re.compile(r"^\s+library\s+(setup|hold)\s+time\s")
+    _re_clock_rise = re.compile(r"clock\s+\S+\s+\(rise\s+edge\)", re.IGNORECASE)
+    _re_data_arrival = re.compile(r"data\s+arrival\s+time", re.IGNORECASE)
+    _re_library_setup = re.compile(r"library\s+(setup|hold)\s+time", re.IGNORECASE)
     _re_capture_tail = re.compile(
-        r"^\s+(clock reconvergence pessimism|clock uncertainty|library\s+(setup|hold)\s+time)\s",
+        r"(clock reconvergence pessimism|clock uncertainty|library\s+(setup|hold)\s+time)",
         re.IGNORECASE,
     )
+
+    @staticmethod
+    def _parsePtLineByColumns(line: str, col_pos: dict[str, int], attrs_order: list[str]) -> tuple[str, dict[str, str]]:
+        """按 PT 表头位置解析一行，兼容 Point 在尾列的新格式。"""
+        content = line.rstrip()
+        attrs: dict[str, str] = {name: "" for name in attrs_order}
+        if not content.strip() or not col_pos:
+            return "", attrs
+        if "Point" in col_pos:
+            point_start = col_pos["Point"]
+            point = content[point_start:].strip()
+            ordered = sorted(
+                [name for name in attrs_order if name in col_pos and col_pos[name] < point_start],
+                key=lambda x: col_pos[x],
+            )
+            for i, name in enumerate(ordered):
+                start = col_pos[name]
+                end = col_pos[ordered[i + 1]] if i + 1 < len(ordered) else point_start
+                value = content[start:end].strip() if start < end else ""
+                attrs[name] = "" if value == "-" else value
+            return point, attrs
+        return TimeParser.parseFixedWidthAttrs(content, col_pos, attrs_order)
 
     def parseOnePath(
         self, path_id: int, path_text: str
@@ -136,8 +159,8 @@ class PtParser(Format1Parser):
         col_pos: dict[str, int] = {}
         table_start = 0
         for idx, line in enumerate(lines):
-            if self._re_point_header.match(line):
-                col_pos = self.extractColumnPositions(line, self.attrs_order)
+            if self._re_point_header.match(line) and ("Point" in line or ("Fanout" in line and "Path" in line)):
+                col_pos = self.extractColumnPositions(line, self.attrs_order + ["Point"])
                 if "Path" in col_pos:
                     table_start = idx + 1
                     if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
@@ -148,13 +171,13 @@ class PtParser(Format1Parser):
         in_launch = False
         launch_start_idx = -1
         for j in range(table_start, len(lines)):
-            if self._re_clock_rise.match(lines[j]):
+            if self._re_clock_rise.search(lines[j]):
                 in_launch = True
                 launch_start_idx = j
                 continue
-            if in_launch and self._re_data_arrival.match(lines[j]):
+            if in_launch and self._re_data_arrival.search(lines[j]):
                 for k in range(launch_start_idx, j + 1):
-                    raw_point, base_attrs = self.parseFixedWidthAttrs(lines[k], col_pos, self.attrs_order)
+                    raw_point, base_attrs = self._parsePtLineByColumns(lines[k], col_pos, self.attrs_order)
                     if not raw_point:
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - launch_start_idx, True)
@@ -176,16 +199,16 @@ class PtParser(Format1Parser):
         in_capture = False
         capture_start_idx = -1
         for j in range(table_start, len(lines)):
-            if self._re_data_arrival.match(lines[j]):
+            if self._re_data_arrival.search(lines[j]):
                 after_data_arrival = True
                 continue
-            if after_data_arrival and self._re_clock_rise.match(lines[j]):
+            if after_data_arrival and self._re_clock_rise.search(lines[j]):
                 in_capture = True
                 capture_start_idx = j
                 continue
-            if in_capture and self._re_capture_tail.match(lines[j]):
+            if in_capture and self._re_capture_tail.search(lines[j]):
                 for k in range(capture_start_idx, j):
-                    raw_point, base_attrs = self.parseFixedWidthAttrs(lines[k], col_pos, self.attrs_order)
+                    raw_point, base_attrs = self._parsePtLineByColumns(lines[k], col_pos, self.attrs_order)
                     if not raw_point:
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - capture_start_idx, True)
@@ -252,7 +275,7 @@ class PtParser(Format1Parser):
         - pin:                 pin  ?
                                        ?
         """
-        if self._re_clock_rise.match(line):
+        if self._re_clock_rise.search(line):
             return "clock"
         if "clock source latency" in line:
             return "clock_src_lat"
@@ -281,10 +304,10 @@ class PtParser(Format1Parser):
             return attrs
 
         expected_by_kind: Dict[str, List[str]] = {
-            "clock": ["Mean", "Incr", "Path"],
-            "clock_src_lat": ["Mean", "Sensit", "Incr", "Path"],
+            "clock": ["Delta", "Incr", "Path"],
+            "clock_src_lat": ["Delta", "Incr", "Path"],
             "net": ["Fanout", "Cap", "Incr", "Path"],
-            "pin": ["Trans", "Derate", "Mean", "Sensit", "Incr", "Path"],
+            "pin": ["DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage"],
         }
         expected = expected_by_kind.get(row_kind)
         if not expected:
@@ -323,7 +346,7 @@ class PtParser(Format1Parser):
         point: str,
         attrs: dict[str, Any],
     ) -> dict[str, Any]:
-        """      PT           Incr  ?&  anout      ap/Trans/Derate/Mean/Sensit/Incr/Path     4       """
+        """PT 行清洗：去掉 Incr 的 '&'，并统一数值精度。"""
         row = super().buildPointRow(meta, point_index, point, attrs)
         incr = row.get("Incr", "")
         if isinstance(incr, str) and "&" in incr:

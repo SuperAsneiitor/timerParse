@@ -49,6 +49,8 @@ python scripts/run_lvf_100_validation.py
 - [ ] 三格式报告已生成
 - [ ] 五行 CSV 齐全（launch/capture/launch_clock/data_path/summary）
 - [ ] compare 输出与 stats JSON 齐全
+- [ ] 默认生成 compare 图表目录（charts）与 HTML 报告（compare_report.html），至少覆盖 `detail_format1_vs_format2`
+- [ ] 默认生成全部单路径详情页（detail_scope=all）
 - [ ]（LVF 场景）`extract` 与 `extract-chaos` 行数一致
 
 ## Reporting Template
