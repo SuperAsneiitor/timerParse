@@ -77,7 +77,8 @@ type_layouts:
     tail_numeric: [Voltage, Delay, Time]
   constraint:
     point_from: after_last_numeric
-    tail_numeric: [Voltage, Delay, Time]
+    # library setup/hold 等行通常仅含 Delay、Time 两个数值，不含 Voltage 占位。
+    tail_numeric: [Delay, Time]
   endpoint:
     point_from: after_last_numeric
     tail_numeric: []

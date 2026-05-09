@@ -2,6 +2,7 @@
 
 row_kind_numeric:
   clock: [Delta, Incr, Path]
-  clock_src_lat: [Delta, Incr, Path]
+  # clock source latency 等行含 Mean/Sensit 与 Incr/Path 共 4 个数值。
+  clock_src_lat: [Mean, Sensit, Incr, Path]
   net: [Fanout, Cap, Incr, Path]
   pin: [DTrans, Trans, Derate, Delta, Incr, Path, Voltage]
