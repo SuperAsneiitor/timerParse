@@ -52,9 +52,13 @@ def _numDiff(g: str, t: str) -> str:
 # - StepDelay: format1/pt 的 Incr == format2 的 Delay
 # - PathTime:  format1/pt 的 Path == format2 的 Time
 _POINT_METRIC_SPECS = [
+    ("Fanout", "Fanout"),
     ("Cap", "Cap"),
+    ("DTrans", "DTrans"),
     ("Derate", "Derate"),
+    ("Delta", "Delta"),
     ("Trans", "Trans"),
+    ("Voltage", "Voltage"),
     ("Incr", "Incr"),
     ("Time", "Time"),
     ("trigger_edge", "trigger_edge"),

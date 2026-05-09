@@ -59,18 +59,16 @@ class TestPtOutputPinNoDelta(unittest.TestCase):
             delta_end = delta_pos + len("Delta")
 
             checked = 0
-            for ln in lines[header_idx + 1 :]:
+            body_lines = lines[header_idx + 1 :]
+            for idx, ln in enumerate(body_lines):
                 # 只看含有 " <-" 的 launch 数据段 pin 行（PT 用 " <-" 标记 launch 段经过的 pin）。
-                # 取所有 pin 行（input/output 都标 <-），通过 trailing token 判断是否为 output（pin 名结尾为 Z/ZN/Q/Y 等）。
                 if " <-" not in ln:
                     continue
-                # 行尾可能有 cell 注释，去掉以提取 pin 名。
-                point_part = ln.rsplit(" <-", 1)[0].rstrip()
-                m = re.search(r"/([A-Za-z0-9_]+)\s*\(", point_part)
-                if not m:
+                if not re.search(r"/[A-Za-z0-9_\[\]]+\s*\(", ln):
                     continue
-                pin = m.group(1)
-                if pin not in {"Z", "ZN", "ZP", "Q", "Y", "YN"}:
+                next_line = next((x for x in body_lines[idx + 1 :] if x.strip()), "")
+                # timing path 拓扑：net 前一个实例 pin 是 output pin，不依赖 pin 名称白名单。
+                if "(net)" not in next_line:
                     continue
                 segment = ln[delta_pos:delta_end] if delta_end <= len(ln) else ""
                 self.assertEqual(
@@ -85,17 +83,23 @@ class TestPtOutputPinNoDelta(unittest.TestCase):
                 csv_path = extract_dir / csv_name
                 self.assertTrue(csv_path.exists(), f"缺少 {csv_path}")
                 with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
-                    reader = csv.DictReader(f)
+                    rows = list(csv.DictReader(f))
                     out_pin_rows = 0
-                    for row in reader:
+                    for idx, row in enumerate(rows):
                         point = (row.get("point") or "").strip()
                         if " <-" not in point:
                             continue
-                        m = re.search(r"/([A-Za-z0-9_]+)\s*\(", point)
-                        if not m:
+                        if not re.search(r"/[A-Za-z0-9_\[\]]+\s*\(", point):
                             continue
-                        pin = m.group(1)
-                        if pin not in {"Z", "ZN", "ZP", "Q", "Y", "YN"}:
+                        next_point = ""
+                        for next_row in rows[idx + 1 :]:
+                            if next_row.get("path_id") != row.get("path_id"):
+                                break
+                            next_point = (next_row.get("point") or "").strip()
+                            if next_point:
+                                break
+                        # timing path 拓扑：net 前一个实例 pin 是 output pin。
+                        if "(net)" not in next_point:
                             continue
                         delta_val = (row.get("Delta") or "").strip()
                         self.assertEqual(

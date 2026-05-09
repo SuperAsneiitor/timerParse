@@ -232,23 +232,35 @@ class PtParser(Format1Parser):
                 launch_start_idx = j
                 continue
             if in_launch and self._re_data_arrival.search(lines[j]):
+                segment_items: list[dict[str, Any]] = []
                 for k in range(launch_start_idx, j + 1):
                     raw_point, base_attrs = self._parsePtLineByColumns(lines[k], col_pos, self.attrs_order)
                     if not raw_point:
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - launch_start_idx, True)
-                    pin_ptype = self._inferPointType(raw_point) if row_kind == "pin" else ""
-                    smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind, pin_ptype)
-                    attrs = self._mergeAttrsPreferFixedWidth(
-                        base_attrs, smart_attrs, self.attrs_order
+                    segment_items.append(
+                        {
+                            "line": lines[k],
+                            "row_index": k - launch_start_idx,
+                            "raw_point": raw_point,
+                            "base_attrs": base_attrs,
+                            "row_kind": row_kind,
+                        }
                     )
-                    ptype = self._inferPointType(raw_point)
+                ptypes = self._inferPointTypesByTopology(segment_items)
+                for item, ptype in zip(segment_items, ptypes):
+                    row_kind = str(item["row_kind"])
+                    pin_ptype = ptype if row_kind == "pin" else ""
+                    smart_attrs = self._parseNumericColumns(item["line"], col_pos, row_kind, pin_ptype)
+                    attrs = self._mergeAttrsPreferFixedWidth(
+                        item["base_attrs"], smart_attrs, self.attrs_order
+                    )
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
                         if not attrs.get("trigger_edge"):
-                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(lines[k])
-                    filtered = self.applyTypeFilter(attrs, ptype, k - launch_start_idx)
-                    launch_rows.append(self.buildPointRow(meta, len(launch_rows) + 1, raw_point, filtered))
+                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(item["line"])
+                    filtered = self.applyTypeFilter(attrs, ptype, int(item["row_index"]))
+                    launch_rows.append(self.buildPointRow(meta, len(launch_rows) + 1, str(item["raw_point"]), filtered))
                 metric = self._extractPathMetric(lines[j], col_pos)
                 if metric:
                     meta["arrival_time"] = metric
@@ -266,23 +278,35 @@ class PtParser(Format1Parser):
                 capture_start_idx = j
                 continue
             if in_capture and self._re_capture_tail.search(lines[j]):
+                segment_items = []
                 for k in range(capture_start_idx, j):
                     raw_point, base_attrs = self._parsePtLineByColumns(lines[k], col_pos, self.attrs_order)
                     if not raw_point:
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - capture_start_idx, True)
-                    pin_ptype = self._inferPointType(raw_point) if row_kind == "pin" else ""
-                    smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind, pin_ptype)
-                    attrs = self._mergeAttrsPreferFixedWidth(
-                        base_attrs, smart_attrs, self.attrs_order
+                    segment_items.append(
+                        {
+                            "line": lines[k],
+                            "row_index": k - capture_start_idx,
+                            "raw_point": raw_point,
+                            "base_attrs": base_attrs,
+                            "row_kind": row_kind,
+                        }
                     )
-                    ptype = self._inferPointType(raw_point)
+                ptypes = self._inferPointTypesByTopology(segment_items)
+                for item, ptype in zip(segment_items, ptypes):
+                    row_kind = str(item["row_kind"])
+                    pin_ptype = ptype if row_kind == "pin" else ""
+                    smart_attrs = self._parseNumericColumns(item["line"], col_pos, row_kind, pin_ptype)
+                    attrs = self._mergeAttrsPreferFixedWidth(
+                        item["base_attrs"], smart_attrs, self.attrs_order
+                    )
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
                         if not attrs.get("trigger_edge"):
-                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(lines[k])
-                    filtered = self.applyTypeFilter(attrs, ptype, k - capture_start_idx)
-                    capture_rows.append(self.buildPointRow(meta, len(capture_rows) + 1, raw_point, filtered))
+                            attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(item["line"])
+                    filtered = self.applyTypeFilter(attrs, ptype, int(item["row_index"]))
+                    capture_rows.append(self.buildPointRow(meta, len(capture_rows) + 1, str(item["raw_point"]), filtered))
                 break
 
         for line in lines:
@@ -362,6 +386,52 @@ class PtParser(Format1Parser):
         if in_launch and segment_row_index >= 0:
             return "pin"
         return ""
+
+    @staticmethod
+    def _isInstancePinPoint(point: str) -> bool:
+        """判断 point 是否像实例 pin（含层级 /pin），port/summary label 不参与拓扑判定。"""
+        text = (point or "").strip()
+        if not text or "(net)" in text:
+            return False
+        label_low = text.lower()
+        if label_low.startswith(("clock ", "data arrival", "data required", "library ", "slack ")):
+            return False
+        return "/" in text
+
+    def _inferPointTypesByTopology(self, row_items: list[dict[str, Any]]) -> list[str]:
+        """
+        按 timing path 拓扑判断 PT pin 类型。
+
+        PT 点表顺序表达的是 cell input -> cell output -> net -> next cell input：
+        - net 前一个实例 pin 是 output pin；
+        - net 后面的实例 pin 是 input pin；
+        - 不含层级 pin 的 port/summary label 默认按 input 侧处理，保留 Delta 语义。
+
+        这样无需维护 Q/Z/Y/O 等 output pin 名称白名单。
+        """
+        ptypes: list[str] = []
+        row_kinds = [str(item.get("row_kind") or "") for item in row_items]
+        for idx, item in enumerate(row_items):
+            row_kind = row_kinds[idx]
+            point = str(item.get("raw_point") or "")
+            if row_kind == "net":
+                ptypes.append("net")
+                continue
+            if row_kind != "pin":
+                ptypes.append(row_kind)
+                continue
+            if not self._isInstancePinPoint(point):
+                ptypes.append("input_pin")
+                continue
+
+            next_kind = ""
+            for j in range(idx + 1, len(row_items)):
+                candidate = row_kinds[j]
+                if candidate:
+                    next_kind = candidate
+                    break
+            ptypes.append("output_pin" if next_kind == "net" else "input_pin")
+        return ptypes
 
     def _parseNumericColumns(
         self,

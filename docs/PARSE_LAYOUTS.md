@@ -126,3 +126,9 @@ python scripts/run_validation_flow.py --jobs 4
   - `lib/parser/pt_parser.py`
   - `lib/parser/format2_parser.py`（clock/constraint/required/arrival/slack/port 等）
 
+### 6.1 PT pin 类型不是 parse_layouts 配置项
+
+PT 的 `input_pin` / `output_pin` 不通过 `Q/Z/ZN/...` 名称列表配置，也不放入 `parse_layouts`。
+解析器按 timing path 拓扑推断：`net` 前一个实例 pin 是 `output_pin`，`net` 后面的实例 pin 是 `input_pin`。
+这样可以覆盖真实库中 `OUT/Y/O/SUM/CO` 等不同输出 pin 命名，并保证 output pin 的 `Delta` 字段保持为空。
+

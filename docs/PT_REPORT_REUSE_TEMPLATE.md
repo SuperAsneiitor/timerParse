@@ -52,6 +52,7 @@
 ### 2.2 字段展示规则
 
 - `Derate`：pin 行固定 4 位小数（示例 `1.1000`）
+- `Delta`：PT 语义上只出现在 input pin 与 clock/port 等输入侧；output pin 的 `Delta` 必须为空。
 - `Mean` / `Sensit`：非 net 行建议 4 位小数，net 行可留空
 - `Incr` 追加后缀：`&`（例：`0.0453 &`）
 - `Path` 追加边沿标记：`r/f`（例：`0.3528 r`、`0.1882 f`）
@@ -82,8 +83,13 @@
 
 ### 3.2 pin 区分
 
-- input pin：常见 `I/A1/A2/CK/D`
-- output pin：常见 `Q/Z/ZN`
+- **不要用 pin 名白名单区分 input/output**。真实库可能使用 `Q/Z/ZN/Y/O/OUT/SUM/CO/...` 等不同输出命名，白名单容易漏判。
+- PT 点表应按 timing path 拓扑判断：
+  - `cell input -> cell output -> net -> next cell input`
+  - `net` 前一个实例 pin 是 `output_pin`
+  - `net` 后面的实例 pin 是 `input_pin`
+  - 不含层级 `/pin` 的 port/summary label 不参与 output 判定
+- 生成器里的示例 pin 名可保留 `I/A1/A2/CK/D`、`Q/Z/ZN` 等常见值，但解析逻辑不能依赖这些名字。
 
 ### 3.3 point 结构
 
@@ -126,5 +132,6 @@
 - [ ] Last common pin 是否在标题出现，且在 capture path point 中真实出现。
 - [ ] `clock source latency` 文案是否正确（不再是 `clock network delay (ideal)`）。
 - [ ] `Incr` 是否带 `&`，`Path` 是否带 `r/f`。
+- [ ] PT output pin 的 `Delta` 是否为空；判定应来自 `pin -> net` 拓扑，而不是 output pin 名称列表。
 - [ ] slack 标签是否与数值符号一致。
 

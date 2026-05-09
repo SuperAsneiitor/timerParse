@@ -129,7 +129,7 @@ lake gen-pt output/extract/launch_path.csv -o output/report_timing.tcl --output-
 lake compare -g golden/path_summary.csv -t test/path_summary.csv -o output/compare/result.csv --no-charts --no-html
 ```
 
-需要汇总页/图表/详情页时，去掉 `--no-charts`、`--no-html`，并按 `-h` 附加 `--golden-launch-csv` 等。详情页 **`paths/path_*.html`** 内「Launch/Capture path 逐点对比」表格在纵向滚动时**表头置顶**（sticky），便于查看长路径。
+需要汇总页/图表/详情页时，去掉 `--no-charts`、`--no-html`，并按 `-h` 附加 `--golden-launch-csv` 等。详情页 **`paths/path_*.html`** 内「Launch/Capture path 逐点对比」表格在纵向滚动时**表头置顶**（sticky），便于查看长路径；逐点表会展示 PT 常用字段 `Fanout`、`Cap`、`DTrans`、`Derate`、`Delta`、`Trans`、`Voltage`、`Incr/Time`、`trigger_edge`，字段在某格式或某行无值时保持空白。
 
 ### 6.5 用 YAML 生成合成报告
 

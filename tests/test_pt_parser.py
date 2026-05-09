@@ -157,6 +157,18 @@ class TestPtParser(unittest.TestCase):
         self.assertEqual((launch_q or {}).get("Delta"), "")
         self.assertEqual((capture_d or {}).get("Delta"), "0.0000")
 
+    def test_output_pin_detected_by_topology_not_name_list(self):
+        """PT output pin 按 net 前拓扑判定，不依赖 Q/Z/ZN 等引脚名白名单。"""
+        rpt = PT_REPORT_POINT_LAST_SUMMARY.replace("U_START/Q", "U_START/OUT")
+        out = self._parse_text(rpt)
+        launch_out = next((r for r in out.launch_rows if "U_START/OUT" in (r.get("point") or "")), None)
+        launch_net = next((r for r in out.launch_rows if "U_START/net0" in (r.get("point") or "")), None)
+        self.assertIsNotNone(launch_out)
+        self.assertIsNotNone(launch_net)
+        self.assertEqual((launch_out or {}).get("Delta"), "")
+        self.assertEqual((launch_out or {}).get("Incr"), "0.0500")
+        self.assertEqual((launch_out or {}).get("Path"), "0.0500")
+
 
 if __name__ == "__main__":
     unittest.main()
