@@ -17,6 +17,10 @@ _F1_TABLE_COLS = ["Point", "Fanout", "Derate", "Cap", "Trans", "Location", "Incr
 _F1_WIDTHS = Format1Report().default_column_widths(_F1_TABLE_COLS)
 _F1_SEP = "-" * max(80, 2 + sum(_F1_WIDTHS[c] for c in _F1_TABLE_COLS))
 
+_F1_CURRENT_COLS = ["Point", "Fanout", "Derate", "Cap", "DTrans", "Trans", "Delta", "Incr", "Path"]
+_F1_CURRENT_WIDTHS = Format1Report().default_column_widths(_F1_CURRENT_COLS)
+_F1_CURRENT_SEP = "-" * max(80, 2 + sum(_F1_CURRENT_WIDTHS[c] for c in _F1_CURRENT_COLS))
+
 _F1_LVF_COLS = [
     "Point",
     "Fanout",
@@ -68,6 +72,20 @@ def _f1_row(*cells: str) -> str:
 
 def _f1_header_line() -> str:
     return _f1_row(*_F1_TABLE_COLS)
+
+
+def _f1_current_row(**cells: str) -> str:
+    """构造当前 format1.yaml 列顺序的固定列宽行。"""
+    parts = []
+    for col in _F1_CURRENT_COLS:
+        w = int(_F1_CURRENT_WIDTHS[col])
+        text = cells.get(col, "")
+        parts.append(str(text).ljust(w)[:w])
+    return "".join(parts).rstrip()
+
+
+def _f1_current_header_line() -> str:
+    return _f1_current_row(**{col: col for col in _F1_CURRENT_COLS})
 
 
 def _f1_lvf_row(*cells: str) -> str:
@@ -306,6 +324,49 @@ class TestFormat1ClockRegex(unittest.TestCase):
         capture_pin = next((r for r in out.capture_rows if "U1/Z" in r.get("point", "")), None)
         self.assertEqual((launch_pin or {}).get("Derate"), "0.9000")
         self.assertEqual((capture_pin or {}).get("Derate"), "0.9500")
+
+    def test_current_format1_fixed_columns_preserve_blank_cells(self):
+        """当前 format1 生成版式含空 Fanout 列时，pin/net 字段不应左移或丢失。"""
+        rpt = rf"""
+  Startpoint: SP/Q (falling edge-triggered flip-flop clocked by CORECLK)
+  Endpoint: EP/D (rising edge-triggered flip-flop clocked by CORECLK)
+  Common Pin: SP/Q
+  Scenario: demo
+
+{_f1_current_header_line()}
+{_F1_CURRENT_SEP}
+{_f1_current_row(Point="clock CORECLK (rise edge)", Incr="0.0100", Path="0.0100")}
+{_f1_current_row(Point="SP/Q (DFF)", Derate="0.9336", Cap="0.0270", DTrans="0.0190", Trans="0.0790", Delta="-0.0520", Incr="0.0100", Path="0.1300 r")}
+{_f1_current_row(Point="SP/net0 (net)", Fanout="1280")}
+{_f1_current_row(Point="U1/A (BUF)", Derate="0.9994", Cap="0.0440", DTrans="0.0390", Trans="0.0380", Delta="-0.0150", Incr="0.0410", Path="0.2180 r")}
+{_f1_current_row(Point="data arrival time", Path="0.2180")}
+
+{_f1_current_row(Point="clock CORECLK (rise edge)", Incr="0.0200", Path="0.0200")}
+{_f1_current_row(Point="EP/D (DFF)", Derate="0.9500", Cap="0.0210", DTrans="0.0450", Trans="0.0270", Delta="0.0230", Incr="0.0550", Path="0.0750 f")}
+{_f1_current_row(Point="library setup time", Incr="0.0290", Path="0.1040")}
+{_f1_current_row(Point="data required time", Path="0.1040")}
+{_f1_current_row(Point="slack (MET)", Path="0.0100")}
+"""
+        out = self._parse_text(rpt)
+        launch_pin = next((r for r in out.launch_rows if "SP/Q" in r.get("point", "")), None)
+        launch_net = next((r for r in out.launch_rows if "SP/net0" in r.get("point", "")), None)
+        data_pin = next((r for r in out.launch_rows if "U1/A" in r.get("point", "")), None)
+        self.assertIsNotNone(launch_pin)
+        self.assertIsNotNone(launch_net)
+        self.assertIsNotNone(data_pin)
+        self.assertEqual((launch_pin or {}).get("Derate"), "0.9336")
+        self.assertEqual((launch_pin or {}).get("Cap"), "0.0270")
+        self.assertEqual((launch_pin or {}).get("DTrans"), "0.0190")
+        self.assertEqual((launch_pin or {}).get("D-Trans"), "0.0190")
+        self.assertEqual((launch_pin or {}).get("Trans"), "0.0790")
+        self.assertEqual((launch_pin or {}).get("Delta"), "-0.0520")
+        self.assertEqual((launch_pin or {}).get("Incr"), "0.0100")
+        self.assertEqual((launch_pin or {}).get("Path"), "0.1300")
+        self.assertEqual((launch_pin or {}).get("trigger_edge"), "r")
+        self.assertEqual((launch_net or {}).get("Fanout"), "1280")
+        self.assertEqual((data_pin or {}).get("Derate"), "0.9994")
+        self.assertEqual((data_pin or {}).get("Cap"), "0.0440")
+        self.assertEqual((data_pin or {}).get("DTrans"), "0.0390")
 
 
 class TestFormat1LvfParser(unittest.TestCase):

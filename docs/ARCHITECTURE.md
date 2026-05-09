@@ -19,7 +19,7 @@
 ## 2. `lib/parser/`（唯一完整解析实现）
 
 - **`time_parser_base.py`**：`TimeParser` 抽象基类、`ParseOutput`、`splitLaunchByCommonPin`、定宽列解析、`writeCsv`。
-- **`format1_parser.py` / `format2_parser.py` / `pt_parser.py`**：三种版式的具体解析（`scanPathBlocks`、`parseOnePath`）。
+- **`format1_parser.py` / `format2_parser.py` / `pt_parser.py`**：三种版式的具体解析（`scanPathBlocks`、`parseOnePath`）；`format1` classic 点表按固定列保留空单元格，`format2` / `pt` 从 summary 行提取 `arrival_time`、`required_time`、`slack`。
 - **`layout_config.py` / `layout_runtime.py`**：加载 `config/parse_layouts/*.yaml`，供按类型 + token 的辅助解析逻辑使用。
 - **`engine.py`**：`create_timing_report_parser()`、`detect_report_format()`；**`TimingParserV2`**：基于 `lib/parser/layouts/*.yaml` 的轻量布局解析（`parse_text` → `ParseResult`），与完整 CSV 流水线可并存。
 - **`io_util.py`**：报告文本统一打开（明文或 **`.gz`** gzip），供解析器与 `extract` / `parallel_extract` 读入。

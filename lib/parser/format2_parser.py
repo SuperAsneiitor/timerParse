@@ -237,13 +237,13 @@ class Format2Parser(TimeParser):
             filtered = self.applyTypeFilter(attrs, point_type, seg_idx)
 
             if self._re_data_arrival.search(lines[j]):
+                vm = re.search(r"(-?\d+(?:\.\d+)?)\s+data\s+arrival\s+time", lines[j], re.IGNORECASE)
+                if vm:
+                    meta["arrival_time"] = vm.group(1).strip()
                 if in_launch:
-                    vm = re.search(r"(-?\d+\.\d+)\s+data\s+arrival\s+time", lines[j], re.IGNORECASE)
-                    if vm:
-                        meta["arrival_time"] = vm.group(1).strip()
-                launch_rows.append(self.buildPointRow(meta, len(launch_rows) + 1, point, filtered))
-                in_launch = False
-                in_capture = True
+                    launch_rows.append(self.buildPointRow(meta, len(launch_rows) + 1, point, filtered))
+                    in_launch = False
+                    in_capture = True
                 continue
 
             if in_launch:

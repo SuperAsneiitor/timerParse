@@ -251,11 +251,24 @@ class Format1Parser(TimeParser):
         table_start = 0
         for idx, line in enumerate(lines):
             if self._re_point_header.match(line):
+                col_pos = self._extractClassicColumnPositions(line)
                 table_start = idx + 1
                 if table_start < len(lines) and self._re_sep_line.match(lines[table_start]):
                     table_start += 1
-                return {"mode": "classic"}, table_start
-        return {"mode": "classic"}, table_start
+                return {"mode": "classic", "col_pos": col_pos}, table_start
+        return {"mode": "classic", "col_pos": {}}, table_start
+
+    @staticmethod
+    def _extractClassicColumnPositions(header_line: str) -> dict[str, int]:
+        """从 classic 表头提取列起点，保留空列以避免字段左移。"""
+        columns = ["Point", "Fanout", "Derate", "Cap", "DTrans", "Trans", "Delta", "Incr", "Path"]
+        col_pos: dict[str, int] = {}
+        column_set = set(columns)
+        for m in re.finditer(r"\S+", header_line):
+            token = m.group(0)
+            if token in column_set:
+                col_pos[token] = m.start()
+        return col_pos
 
     def _findLvfTableStart(self, lines: list[str]) -> tuple[dict[str, Any], int]:
         """定位 LVF 双层表头（支持“分组行在上、属性行在下”的正确格式）。"""
@@ -347,6 +360,27 @@ class Format1Parser(TimeParser):
         attrs["D-Trans"] = attrs.get("DTrans", "")
         return point, attrs
 
+    def _parseClassicByColumns(self, line: str, col_pos: dict[str, int]) -> tuple[str, Dict[str, str]]:
+        """classic 行按固定列位置解析，保留中间空列。"""
+        attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
+        if not col_pos or "Point" not in col_pos:
+            return self._parseClassicByTokens(line)
+
+        content = line.rstrip()
+        ordered = sorted(col_pos.items(), key=lambda item: item[1])
+        point_end = col_pos.get("Fanout", len(content))
+        point = content[col_pos["Point"] : point_end].strip()
+
+        for idx, (name, start) in enumerate(ordered):
+            if name == "Point":
+                continue
+            end = ordered[idx + 1][1] if idx + 1 < len(ordered) else len(content)
+            value = content[start:end].strip() if start < len(content) else ""
+            attrs[name] = "" if value == "-" else value
+
+        attrs["D-Trans"] = attrs.get("DTrans", "")
+        return point, attrs
+
     def _parseLvfByTokens(self, line: str) -> tuple[str, Dict[str, str]]:
         """
         LVF 行按字段分隔解析（不按列位置切片）：
@@ -418,7 +452,8 @@ class Format1Parser(TimeParser):
             point, attrs = self._parseLvfByTokens(line)
             return point, attrs
 
-        point, attrs = self._parseClassicByTokens(line)
+        col_pos = (table_info or {}).get("col_pos") or {}
+        point, attrs = self._parseClassicByColumns(line, col_pos)
         merged: Dict[str, str] = {name: "" for name in self.attrs_order}
         for key, value in attrs.items():
             merged[key] = value

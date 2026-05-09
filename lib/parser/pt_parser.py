@@ -59,7 +59,7 @@ class PtParser(Format1Parser):
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")
     _re_endpoint = re.compile(r"^\s+Endpoint:\s+(.+?)\s*$")
     _re_clocked_by = re.compile(r"clocked by ([^\s)]+)")
-    _re_slack = re.compile(r"^\s+slack\s+\((VIOLATED|MET)\)\s")
+    _re_slack = re.compile(r"^\s*(?:slack\s+\((VIOLATED|MET)\)|.*\bslack\s+\((VIOLATED|MET)\))", re.IGNORECASE)
     _re_slack_value = re.compile(r"(-?\d+\.\d+)\s*$")
     _re_last_common_pin = re.compile(
         r"^\s*Last\s+common\s+pin\s*[:=]\s*(.+?)\s*$", re.IGNORECASE
@@ -79,13 +79,18 @@ class PtParser(Format1Parser):
 
     @staticmethod
     def _parsePtLineByColumns(line: str, col_pos: dict[str, int], attrs_order: list[str]) -> tuple[str, dict[str, str]]:
-        """按 PT 表头位置解析一行，兼容 Point 在尾列的新格式。"""
+        """按 PT 表头位置解析一行，兼容 Point 在首列或尾列。"""
         content = line.rstrip()
         attrs: dict[str, str] = {name: "" for name in attrs_order}
         if not content.strip() or not col_pos:
             return "", attrs
         if "Point" in col_pos:
             point_start = col_pos["Point"]
+            metric_positions = [
+                pos for name, pos in col_pos.items() if name != "Point" and name in attrs_order
+            ]
+            if metric_positions and point_start < min(metric_positions):
+                return TimeParser.parseFixedWidthAttrs(content, col_pos, attrs_order)
             point = content[point_start:].strip()
             ordered = sorted(
                 [name for name in attrs_order if name in col_pos and col_pos[name] < point_start],
@@ -98,6 +103,21 @@ class PtParser(Format1Parser):
                 attrs[name] = "" if value == "-" else value
             return point, attrs
         return TimeParser.parseFixedWidthAttrs(content, col_pos, attrs_order)
+
+    @staticmethod
+    def _mergeAttrsPreferFixedWidth(
+        base_attrs: dict[str, str],
+        fallback_attrs: dict[str, str] | None,
+        attrs_order: list[str],
+    ) -> dict[str, str]:
+        """合并解析结果：固定列宽值优先，fallback 只补空。"""
+        attrs = {name: base_attrs.get(name, "") for name in attrs_order}
+        if not fallback_attrs:
+            return attrs
+        for name, value in fallback_attrs.items():
+            if name in attrs and value and not attrs.get(name):
+                attrs[name] = value
+        return attrs
 
     def parseOnePath(
         self, path_id: int, path_text: str
@@ -141,11 +161,10 @@ class PtParser(Format1Parser):
                     cm = self._re_clocked_by.search(lines[i + 1])
                 meta["endpoint_clock"] = cm.group(1).strip() if cm else ""
                 continue
-            m = self._re_slack.match(line)
-            if m:
-                meta["slack_status"] = m.group(1).strip()
-                vm = self._re_slack_value.search(line)
-                meta["slack"] = vm.group(1).strip() if vm else ""
+            slack_status = self._extractSlackStatus(line)
+            if slack_status:
+                meta["slack_status"] = slack_status
+                meta["slack"] = self._extractPathMetric(line, {})
                 break
 
         #     Last common pin     slack                   
@@ -182,7 +201,9 @@ class PtParser(Format1Parser):
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - launch_start_idx, True)
                     smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind)
-                    attrs = smart_attrs or base_attrs
+                    attrs = self._mergeAttrsPreferFixedWidth(
+                        base_attrs, smart_attrs, self.attrs_order
+                    )
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
@@ -190,9 +211,9 @@ class PtParser(Format1Parser):
                             attrs["trigger_edge"] = self._extractTriggerEdgeFromLine(lines[k])
                     filtered = self.applyTypeFilter(attrs, ptype, k - launch_start_idx)
                     launch_rows.append(self.buildPointRow(meta, len(launch_rows) + 1, raw_point, filtered))
-                vm = re.search(r"(-?\d+\.\d+)\s*$", lines[j])
-                if vm:
-                    meta["arrival_time"] = vm.group(1).strip()
+                metric = self._extractPathMetric(lines[j], col_pos)
+                if metric:
+                    meta["arrival_time"] = metric
                 break
 
         after_data_arrival = False
@@ -213,7 +234,9 @@ class PtParser(Format1Parser):
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - capture_start_idx, True)
                     smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind)
-                    attrs = smart_attrs or base_attrs
+                    attrs = self._mergeAttrsPreferFixedWidth(
+                        base_attrs, smart_attrs, self.attrs_order
+                    )
                     ptype = self._inferPointType(raw_point)
                     if ptype in ("input_pin", "output_pin"):
                         attrs = self._extractTriggerEdgeFromPath(attrs)
@@ -225,17 +248,17 @@ class PtParser(Format1Parser):
 
         for line in lines:
             if "data required time" in line:
-                vm = re.search(r"(-?\d+\.\d+)\s*$", line)
-                if vm:
-                    meta["required_time"] = vm.group(1).strip()
+                metric = self._extractPathMetric(line, col_pos)
+                if metric:
+                    meta["required_time"] = metric
                     break
 
         if not meta["arrival_time"]:
             for line in lines:
                 if "data arrival time" in line:
-                    vm = re.search(r"(-?\d+\.\d+)\s*$", line)
-                    if vm:
-                        meta["arrival_time"] = vm.group(1).strip()
+                    metric = self._extractPathMetric(line, col_pos)
+                    if metric:
+                        meta["arrival_time"] = metric
                         break
 
         self._fillUncertainty(lines, meta)
@@ -265,6 +288,35 @@ class PtParser(Format1Parser):
         meta["clock_period"] = clock_period
 
         return meta, launch_rows, capture_rows
+
+    @staticmethod
+    def _extractSlackStatus(line: str) -> str:
+        """从 PT slack 行中提取 MET/VIOLATED，兼容 label 位于行首或 Point 尾列。"""
+        m = re.search(r"\bslack\s+\((VIOLATED|MET)\)", line, re.IGNORECASE)
+        return m.group(1).upper() if m else ""
+
+    def _extractPathMetric(self, line: str, col_pos: dict[str, int]) -> str:
+        """
+        从 PT 行的 Path 固定列提取指标值。
+
+        生成版 PT 的 Point 位于尾列，summary 行形如：
+            <Path 数值>              data arrival time
+        因此不能使用“行尾数字”规则；优先按 Path 列切片，旧式 fixture 再回退到最后一个数值。
+        """
+        if col_pos and "Path" in col_pos:
+            start = col_pos["Path"]
+            end = len(line)
+            for _, pos in sorted(col_pos.items(), key=lambda item: item[1]):
+                if pos > start:
+                    end = pos
+                    break
+            value = line[start:end].strip() if start < len(line) else ""
+            m = re.search(r"-?\d+(?:\.\d+)?", value)
+            if m:
+                return m.group(0)
+
+        vm = re.findall(r"-?\d+(?:\.\d+)?", line)
+        return vm[-1] if vm else ""
 
     def _classify_row_kind(self, point: str, line: str, segment_row_index: int, in_launch: bool) -> str:
         """

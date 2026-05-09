@@ -51,6 +51,26 @@ required                                                                        
 slack                                                                                                                                                                                                 -0.766   slack (VIOLATED)
 """
 
+FORMAT2_REPORT_SUMMARY_ARRIVAL = r"""
+Path Start         :  start/Q ( flip-flop, falling edge-triggered,  CPU_CLK)
+Path End           :  end/D ( flip-flop, falling edge-triggered,  CPU_CLK)
+
+Type                        Fanout    Cap       D-Trans     Trans     Derate        Voltage   D-Delay   Delay     Time        Description
+-----------------------------------------------------------------------------------------------------------------------------------------
+clock                                                                                                   0.0000    0.0000      clock CPU_CLK (rise edge)
+pin                                             -0.0000     0.0070    0.9000        0.8890    -0.0000   0.0460    0.1420      / start/Q (DFF)
+arrival                                                                                                                       data arrival time
+
+clock                                                                                                   0.0480    0.0480      clock CPU_CLK (rise edge)
+pin                                             -0.0000     0.0060    0.9000        0.9720    -0.0000   0.0560    0.1340      / end/D (DFF)
+required                                                                                                          0.7310      data required time
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+required                                                                                                          0.7310      data required time
+arrival                                                                                                           -0.8310     data arrival time
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+slack                                                                                                             -0.1000     slack (VIOLATED)
+"""
+
 # 多类型 point 名称测试：覆盖前缀、/ 与 \、长路径、多种 cell 后缀（参考 format_2.timing_report.rpt.txt）
 FORMAT2_REPORT_DIVERSE_POINTS = r"""
 Path Start         :  start/Q ( flip-flop, falling edge-triggered,  CPU_CLK)
@@ -221,6 +241,21 @@ class TestFormat2ParserOutput(unittest.TestCase):
                 any(r.get("slack") for r in out.summary_rows),
                 "至少一条 path 应有 slack",
             )
+        finally:
+            os.unlink(path)
+
+    def test_summary_arrival_after_capture_tail(self):
+        """生成版 format2 的 summary arrival 位于 capture 尾部，应写入 path_summary。"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".rpt", delete=False, encoding="utf-8") as f:
+            f.write(FORMAT2_REPORT_SUMMARY_ARRIVAL)
+            path = f.name
+        try:
+            out = self.parser.parseReport(path)
+            self.assertGreater(len(out.summary_rows), 0)
+            s = out.summary_rows[0]
+            self.assertEqual(s.get("arrival_time"), "-0.8310")
+            self.assertEqual(s.get("required_time"), "0.7310")
+            self.assertEqual(s.get("slack"), "-0.1000")
         finally:
             os.unlink(path)
 

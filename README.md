@@ -227,6 +227,9 @@ LVF 与非 LVF 的使用建议：
 | `-fall_cmd FLAG` | 下降沿 through 参数名（默认 `-fall_through`） |
 | `-g` / `--launch-glob GLOB` | 多个 launch CSV 通配读取（优先级高于位置参数 `launch_csv`） |
 | `-j` / `--jobs N` | 多进程 worker 数（默认 1） |
+| `--startpoint-match` | `exact`（默认）或 `instance`；PT 报告中 startpoint 仅为实例名时用 `instance` 允许从 `instance/pin` 起收集 through |
+
+`gen-pt` 的 through 边沿优先使用 `launch_path.csv` 中的 `trigger_edge`：`r` 输出 `-rise_through`，`f` 输出 `-fall_through`；仅当该列为空时才按 pin 名（如 `Q/Z/ZN/ZP`）回退判断。验证流会对 `format1`、`format2`、`pt` 三份 `launch_path.csv` 都生成 `report_timing_*.tcl`，并要求每份 TCL 有 100 条 `report_timing`。
 
 ### 10.5 `compare`
 
