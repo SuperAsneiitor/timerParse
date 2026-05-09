@@ -120,7 +120,8 @@ class TestPtParser(unittest.TestCase):
         self.assertEqual((launch_pin or {}).get("DTrans"), "0.0010")
         self.assertEqual((launch_pin or {}).get("Trans"), "0.0100")
         self.assertEqual((launch_pin or {}).get("Derate"), "1.1000")
-        self.assertEqual((launch_pin or {}).get("Delta"), "0.0000")
+        # Q 为 output_pin：PT 语义无 Delta，占位列不参与映射。
+        self.assertEqual((launch_pin or {}).get("Delta"), "")
         self.assertEqual((launch_pin or {}).get("Incr"), "0.0500")
         self.assertEqual((launch_pin or {}).get("Path"), "0.0500")
         self.assertEqual((launch_pin or {}).get("Voltage"), "0.9000")
@@ -145,6 +146,16 @@ class TestPtParser(unittest.TestCase):
         self.assertEqual((mid_pin or {}).get("Derate"), "1.1000")
         self.assertEqual((mid_pin or {}).get("Path"), "0.0700")
         self.assertEqual((mid_pin or {}).get("Voltage"), "0.9000")
+
+    def test_output_pin_delta_empty_input_pin_keeps_delta(self):
+        """output_pin（如寄存器 Q）不填 Delta；input_pin（如 D 端）保留 Delta 列。"""
+        out = self._parse_text(PT_REPORT_POINT_LAST_SUMMARY)
+        launch_q = next((r for r in out.launch_rows if "U_START/Q" in (r.get("point") or "")), None)
+        capture_d = next((r for r in out.capture_rows if "U_END/D" in (r.get("point") or "")), None)
+        self.assertIsNotNone(launch_q)
+        self.assertIsNotNone(capture_d)
+        self.assertEqual((launch_q or {}).get("Delta"), "")
+        self.assertEqual((capture_d or {}).get("Delta"), "0.0000")
 
 
 if __name__ == "__main__":

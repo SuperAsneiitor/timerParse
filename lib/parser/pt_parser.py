@@ -52,7 +52,8 @@ class PtParser(Format1Parser):
     default_attrs_by_type = {
         "net": ["Fanout", "Cap"],
         "input_pin": ["DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage", "trigger_edge"],
-        "output_pin": ["DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage", "trigger_edge"],
+        # PT 语义：Delta 仅出现在 input pin；报告里 output 行可能仍有占位列，解析时跳过以免 Incr/Path 错位。
+        "output_pin": ["DTrans", "Trans", "Derate", "Incr", "Path", "Voltage", "trigger_edge"],
     }
 
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")
@@ -236,7 +237,8 @@ class PtParser(Format1Parser):
                     if not raw_point:
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - launch_start_idx, True)
-                    smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind)
+                    pin_ptype = self._inferPointType(raw_point) if row_kind == "pin" else ""
+                    smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind, pin_ptype)
                     attrs = self._mergeAttrsPreferFixedWidth(
                         base_attrs, smart_attrs, self.attrs_order
                     )
@@ -269,7 +271,8 @@ class PtParser(Format1Parser):
                     if not raw_point:
                         continue
                     row_kind = self._classify_row_kind(raw_point, lines[k], k - capture_start_idx, True)
-                    smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind)
+                    pin_ptype = self._inferPointType(raw_point) if row_kind == "pin" else ""
+                    smart_attrs = self._parseNumericColumns(lines[k], col_pos, row_kind, pin_ptype)
                     attrs = self._mergeAttrsPreferFixedWidth(
                         base_attrs, smart_attrs, self.attrs_order
                     )
@@ -365,6 +368,7 @@ class PtParser(Format1Parser):
         line: str,
         col_pos: dict[str, int],
         row_kind: str,
+        pin_ptype: str = "",
     ) -> Dict[str, str] | None:
         """PT                  net        """
         if not row_kind:
@@ -402,10 +406,27 @@ class PtParser(Format1Parser):
         tokens = [m.group(0) for m in tokens_iter]
 
         attrs = {name: "" for name in self.attrs_order}
-        limit = min(len(tokens), len(expected))
-        tail = tokens[-limit:] if limit else []
-        for i, name in enumerate(expected[:limit]):
-            attrs[name] = tail[i]
+        if row_kind == "pin" and pin_ptype == "output_pin":
+            # 与 input 相同 token 数时第 4 个数为 Delta 占位，不参与 output 字段映射。
+            if len(tokens) >= 7:
+                seg = tokens[-7:]
+                attrs["DTrans"] = seg[0]
+                attrs["Trans"] = seg[1]
+                attrs["Derate"] = seg[2]
+                attrs["Incr"] = seg[4]
+                attrs["Path"] = seg[5]
+                attrs["Voltage"] = seg[6]
+            else:
+                out_expected = ["DTrans", "Trans", "Derate", "Incr", "Path", "Voltage"]
+                limit = min(len(tokens), len(out_expected))
+                tail = tokens[-limit:] if limit else []
+                for i, name in enumerate(out_expected[:limit]):
+                    attrs[name] = tail[i]
+        else:
+            limit = min(len(tokens), len(expected))
+            tail = tokens[-limit:] if limit else []
+            for i, name in enumerate(expected[:limit]):
+                attrs[name] = tail[i]
         if row_kind == "pin":
             edge_match = re.search(
                 r"-?\d+(?:\.\d+)?\s*&?\s+([rf])\s+-?\d+(?:\.\d+)?\s*$",
