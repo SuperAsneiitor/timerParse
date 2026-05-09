@@ -96,9 +96,11 @@ table:
   - PT/format1：关键词在行首，数值在关键词后；从关键词后面的数值中取倒数第二个作为增量（Incr）；  
   - format2：关键词在行尾 Description 中，数值在左侧 Delay/Time 列；若关键词后无数值，则从关键词前的整行数值中取倒数第二个作为增量（Delay）。
 - PT 生成器与解析器对 capture 段进行了对齐：capture_path 的最后一个点为 Endpoint 的时钟端 CK，`clock reconvergence pessimism` 与 `clock uncertainty` 只出现在 summary 段，不再混入 capture 点表。
-- format1 classic 解析改为按表头 token 起点进行固定列切片，保留空 `Fanout` 列，避免 pin 行的 `Derate/Cap/DTrans/Trans/Delta` 左移或丢失；net 行 `Fanout` 保留。
+- format1 classic 解析以行类型 + 数值 token 顺序恢复字段（而非固定列切片），保证字段值在列宽漂移时不被截断，同时保留空 `Fanout` 的语义对齐。
 - format2 / PT 的 summary 指标从真实生成版式读取：`arrival_time`、`required_time`、`slack` 必须在 `path_summary.csv` 中全量非空（100/100），compare 的 `slack_pass_stats.unknown_count` 必须为 0。
 - `gen-pt` 生成 `report_timing` 时，through 方向优先来自 `trigger_edge`（`r` -> `-rise_through`，`f` -> `-fall_through`）；PT 的 Point 在尾列时固定列解析结果优先，防止 cell 名中的数字覆盖 `Path/trigger_edge/Voltage` 等字段。
+- PT Point 尾列版式中，`net` 行 `Fanout/Cap` 必须从 point 前 metric 区提取（而非 `(net)` 文本之后）；`compare` 详情页中的 net 行 `Cap(G)` 不能为空。
+- compare 图表模块需兼容 matplotlib 的 `boxplot` 参数差异：新版本使用 `tick_labels`，旧版本回退 `labels`。
 - compare 统计新增固定误差区间（`error_range_stats`）：
   - `arrival_time_ratio` / `required_time_ratio`（`(test-ref)/ref`）：`[-∞,-20%],[-20%,-15%],[-15%,-10%],[-10%,-5%],[-5%,0%],[0%,5%],[5%,10%],[10%,15%],[15%,20%],[20%,∞]`
   - `slack_diff`（`test-ref`）：`[-∞,-20],[-20,-15],[-15,-10],[-10,-5],[-5,0],[0,5],[5,10],[10,15],[15,20],[20,∞]`（图中标注 `ps`）

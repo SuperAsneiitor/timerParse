@@ -46,6 +46,7 @@ PT_REPORT_POINT_LAST_SUMMARY = r"""
   ------------------------------------------------------------------------------------------------
                                                 0.0000    0.0000    0.0000              clock PTCLK (rise edge)
                       0.0010  0.0100  1.1000    0.0000    0.0500 &  0.0500 r  0.9000    U_START/Q (DFF) <-
+  3           0.0200                                      0.0199    0.0896 r            U_START/net0 (net)
                       0.0010  0.0100  1.1000    0.0000    0.0200 &  0.0700 r  0.9000    U123_MID/A (BUF) <-
                                                                     0.0700              data arrival time
 
@@ -109,9 +110,11 @@ class TestPtParser(unittest.TestCase):
         """Point 尾列含 cell 名数字时，固定列值和 trigger_edge 不应被 fallback 覆盖。"""
         out = self._parse_text(PT_REPORT_POINT_LAST_SUMMARY)
         launch_pin = next((r for r in out.launch_rows if "U_START/Q" in (r.get("point") or "")), None)
+        launch_net = next((r for r in out.launch_rows if "U_START/net0" in (r.get("point") or "")), None)
         mid_pin = next((r for r in out.launch_rows if "U123_MID/A" in (r.get("point") or "")), None)
         capture_pin = next((r for r in out.capture_rows if "U_END/D" in (r.get("point") or "")), None)
         self.assertIsNotNone(launch_pin)
+        self.assertIsNotNone(launch_net)
         self.assertIsNotNone(mid_pin)
         self.assertIsNotNone(capture_pin)
         self.assertEqual((launch_pin or {}).get("DTrans"), "0.0010")
@@ -122,6 +125,9 @@ class TestPtParser(unittest.TestCase):
         self.assertEqual((launch_pin or {}).get("Path"), "0.0500")
         self.assertEqual((launch_pin or {}).get("Voltage"), "0.9000")
         self.assertEqual((launch_pin or {}).get("trigger_edge"), "r")
+        self.assertEqual((launch_net or {}).get("point"), "U_START/net0 (net)")
+        self.assertEqual(str((launch_net or {}).get("Fanout")), "3")
+        self.assertEqual((launch_net or {}).get("Cap"), "0.0200")
         self.assertEqual((mid_pin or {}).get("trigger_edge"), "r")
         self.assertEqual((capture_pin or {}).get("trigger_edge"), "f")
 

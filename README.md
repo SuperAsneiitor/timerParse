@@ -264,6 +264,8 @@ LVF 与非 LVF 的使用建议：
 - HTML 报告中对应为“误差区间占比统计”两张表：
   - 一张合并展示 `arrival_time_ratio` 与 `required_time_ratio`
   - 一张单独展示 `slack_diff`
+- 逐点详情页（`detail_* / paths/path_*.html`）中的 `Cap` 显示直接来自各自 `launch/capture` CSV；在 PT 报告（Point 尾列）中，`net` 行 `Fanout/Cap` 会从 point 前的数值区提取并写入 CSV，用于网页 `Cap` 的 G/T/Δ 对比。
+- 图表生成对 matplotlib 参数做版本兼容：优先使用 `boxplot(..., tick_labels=...)`，旧版本自动回退到 `labels=...`。
 
 ### 10.6 `gen-report`
 

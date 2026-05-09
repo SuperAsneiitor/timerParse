@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Dict, List
 
@@ -48,6 +49,15 @@ def _ensure_matplotlib() -> bool:
             return False
 
 
+def _boxplotWithLabels(plt, box_data: List[List[float]], box_labels: List[str]) -> None:
+    """兼容不同 matplotlib 版本的箱线图标签参数。"""
+    params = inspect.signature(plt.boxplot).parameters
+    if "tick_labels" in params:
+        plt.boxplot(box_data, tick_labels=box_labels)
+    else:
+        plt.boxplot(box_data, labels=box_labels)
+
+
 def generate_charts(
     rows: List[dict],
     charts_dir: Path,
@@ -90,7 +100,7 @@ def generate_charts(
     box_labels = [col for col in ratio_columns if data[col]]
     if box_data:
         plt.figure(figsize=(8, 5))
-        plt.boxplot(box_data, tick_labels=box_labels)
+        _boxplotWithLabels(plt, box_data, box_labels)
         plt.title("Boxplot - ratio columns")
         plt.ylabel("Value")
         out = charts_dir / "boxplot_ratios.png"

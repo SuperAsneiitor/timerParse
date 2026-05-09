@@ -116,7 +116,10 @@ class PtParser(Format1Parser):
                 last_numeric_idx = idx
         if last_numeric_idx < 0:
             return ""
-        return " ".join(tokens[last_numeric_idx + 1 :]).strip()
+        point_start = last_numeric_idx + 1
+        if point_start < len(tokens) and tokens[point_start].lower() in ("r", "f"):
+            point_start += 1
+        return " ".join(tokens[point_start:]).strip()
 
     @staticmethod
     def _metricTextWithoutPoint(line: str, col_pos: dict[str, int]) -> str:
@@ -379,16 +382,17 @@ class PtParser(Format1Parser):
 
         if row_kind == "net":
             attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
-            after_net = ""
-            m = re.search(r"\(net\)", line, re.IGNORECASE)
-            if m:
-                after_net = line[m.end() :]
-            nums = re.findall(r"-?\d+(?:\.\d+)?", after_net)
+            metric_text = self._metricTextWithoutPoint(line, col_pos)
+            nums = re.findall(r"-?\d+(?:\.\d+)?", metric_text)
             if not nums:
                 return None
-            limit = min(len(nums), len(expected))
-            for i, name in enumerate(expected[:limit]):
-                attrs[name] = nums[i]
+            if len(nums) >= 4:
+                tail = nums[-4:]
+                for i, name in enumerate(expected):
+                    attrs[name] = tail[i]
+            elif len(nums) >= 2:
+                attrs["Fanout"] = nums[0]
+                attrs["Cap"] = nums[1]
             return attrs
 
         metric_text = self._metricTextWithoutPoint(line, col_pos)
