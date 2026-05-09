@@ -3,6 +3,7 @@ from __future__ import annotations
 import html as html_module
 import json
 import math
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -380,6 +381,16 @@ def generate_html_report(
     detail_dir = html_path.parent / "paths"
     pages_dir.mkdir(parents=True, exist_ok=True)
 
+    # 报告生成时间戳：在首页和分页页顶部统一展示，便于辨识同一目录下多次生成的版本。
+    now = datetime.now().astimezone()
+    generated_at_iso = now.strftime("%Y-%m-%d %H:%M:%S")
+    generated_at_tz = now.strftime("%z")
+    if generated_at_tz:
+        generated_at_label = f"{generated_at_iso} (UTC{generated_at_tz[:3]}:{generated_at_tz[3:]})"
+    else:
+        generated_at_label = generated_at_iso
+    generated_at_html = html_module.escape(generated_at_label)
+
     generated_detail_count = 0
 
     def _row_should_generate_detail(page_idx: int, row_offset_in_page: int) -> bool:
@@ -496,10 +507,29 @@ def generate_html_report(
     table {{ border-collapse: collapse; width: 100%; margin-bottom: 18px; }}
     th, td {{ border: 1px solid #ccc; padding: 6px 8px; font-size: 13px; }}
     th {{ background: #f3f3f3; text-align: left; }}
+    .report-header {{
+      display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+      gap: 12px; margin: 0 0 10px 0; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;
+    }}
+    .report-header h1 {{ margin: 0; font-size: 22px; line-height: 1.3; }}
+    .report-meta {{
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border: 1px solid #e5e7eb; border-radius: 999px;
+      background: #f9fafb; color: #4b5563; font-size: 12px; white-space: nowrap;
+    }}
+    .report-meta .label {{ color: #6b7280; }}
+    .report-meta .value {{ color: #111827; font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace; }}
   </style>
 </head>
 <body>
-  <h1>路径列表（关键差异，按 {html_module.escape(sort_by)} {'绝对值' if sort_abs else ''}排序）</h1>
+  <header class="report-header">
+    <h1>路径列表（关键差异，按 {html_module.escape(sort_by)} {'绝对值' if sort_abs else ''}排序）</h1>
+    <span class="report-meta" title="报告生成时间">
+      <span class="label">生成时间</span>
+      <span class="value">{generated_at_html}</span>
+    </span>
+  </header>
   <p><a href="../compare_report.html">返回汇总首页</a></p>
   {nav}
   <div style="margin:12px 0;">
@@ -590,10 +620,29 @@ def generate_html_report(
       border-radius: 6px;
       background: #fff;
     }}
+    .report-header {{
+      display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+      gap: 12px; margin: 0 0 12px 0; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;
+    }}
+    .report-header h1 {{ margin: 0; font-size: 24px; line-height: 1.3; }}
+    .report-meta {{
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border: 1px solid #e5e7eb; border-radius: 999px;
+      background: #f9fafb; color: #4b5563; font-size: 12px; white-space: nowrap;
+    }}
+    .report-meta .label {{ color: #6b7280; }}
+    .report-meta .value {{ color: #111827; font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace; }}
   </style>
 </head>
 <body>
-  <h1>compare_path_summary 报告</h1>
+  <header class="report-header">
+    <h1>compare_path_summary 报告</h1>
+    <span class="report-meta" title="报告生成时间">
+      <span class="label">生成时间</span>
+      <span class="value">{generated_at_html}</span>
+    </span>
+  </header>
   <p><b>golden_file:</b> {golden_path}</p>
   <p><b>test_file:</b> {test_path}</p>
   <p><b>sample_count:</b> {compared_count}</p>
