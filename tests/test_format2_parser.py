@@ -162,17 +162,35 @@ class TestFormat2Helpers(unittest.TestCase):
             "pin -0.000 0.000 0.900 { 219.156 772.737 } "
             "-0.000 0.033 0.034"
         )
-        trans, derate, x_val, y_val, d_delay, delay, time = p._extractPinMetrics(
+        d_trans, trans, derate, voltage, x_val, y_val, d_delay, delay, time = p._extractPinMetrics(
             prefix,
             is_output=False,
         )
+        self.assertEqual(d_trans, "-0.000")
         self.assertEqual(derate, "0.900")
+        self.assertEqual(voltage, "")
         self.assertEqual(x_val, "219.156")
         self.assertEqual(y_val, "772.737")
         self.assertEqual(trans, "0.000")
         self.assertEqual(d_delay, "-0.000")
         self.assertEqual(delay, "0.033")
         self.assertEqual(time, "0.034")
+
+    def test_extract_pin_metrics_accept_voltage_column(self):
+        """带 Voltage 列的 pin 行不应把 Voltage 当成 Derate。"""
+        p = Format2Parser()
+        prefix = "pin -0.000000 0.007000 0.900000 0.889000 -0.000000 0.046000 0.142000"
+        d_trans, trans, derate, voltage, _x_val, _y_val, d_delay, delay, time = p._extractPinMetrics(
+            prefix,
+            is_output=False,
+        )
+        self.assertEqual(d_trans, "-0.000000")
+        self.assertEqual(trans, "0.007000")
+        self.assertEqual(derate, "0.900000")
+        self.assertEqual(voltage, "0.889000")
+        self.assertEqual(d_delay, "-0.000000")
+        self.assertEqual(delay, "0.046000")
+        self.assertEqual(time, "0.142000")
 
     def test_split_derate_pair(self):
         """format2 LVF 变体：Derate 支持双值逗号串，并拆成 DerateA / DerateB。"""
@@ -256,6 +274,43 @@ class TestFormat2ParserOutput(unittest.TestCase):
             self.assertEqual(s.get("arrival_time"), "-0.8310")
             self.assertEqual(s.get("required_time"), "0.7310")
             self.assertEqual(s.get("slack"), "-0.1000")
+        finally:
+            os.unlink(path)
+
+    def test_misaligned_pin_values_do_not_truncate_or_read_point_digits(self):
+        """字段值未按表头位置对齐时，pin metric 不应截断或读取 point 中数字。"""
+        rpt = r"""
+Path Start         :  start/Q ( flip-flop, falling edge-triggered,  CPU_CLK)
+Path End           :  end/D ( flip-flop, falling edge-triggered,  CPU_CLK)
+
+Type                        Fanout    Cap       D-Trans     Trans     Derate        Voltage   D-Delay   Delay     Time        Description
+-----------------------------------------------------------------------------------------------------------------------------------------
+clock 0.000000 0.000000 clock CPU_CLK (rise edge)
+pin -0.000000 0.007000 0.900000 0.889000 -0.000000 0.046000 0.142000 / start123/A (DFF)
+arrival 0.142000 data arrival time
+
+clock 0.048000 0.048000 clock CPU_CLK (rise edge)
+pin -0.000000 0.006000 0.950000 0.972000 -0.000000 0.056000 0.134000 \ end456/D (DFF)
+required 0.731000 data required time
+slack -0.100000 slack (VIOLATED)
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".rpt", delete=False, encoding="utf-8") as f:
+            f.write(rpt)
+            path = f.name
+        try:
+            out = self.parser.parseReport(path)
+            launch_pin = next((r for r in out.launch_rows if "start123/A" in r.get("point", "")), None)
+            capture_pin = next((r for r in out.capture_rows if "end456/D" in r.get("point", "")), None)
+            self.assertIsNotNone(launch_pin)
+            self.assertIsNotNone(capture_pin)
+            self.assertEqual((launch_pin or {}).get("D-Trans"), "-0.000000")
+            self.assertEqual((launch_pin or {}).get("Trans"), "0.007000")
+            self.assertEqual((launch_pin or {}).get("Derate"), "0.900000")
+            self.assertEqual((launch_pin or {}).get("Voltage"), "0.889000")
+            self.assertEqual((launch_pin or {}).get("Delay"), "0.046000")
+            self.assertEqual((launch_pin or {}).get("Time"), "0.142000")
+            self.assertEqual((launch_pin or {}).get("trigger_edge"), "r")
+            self.assertEqual((capture_pin or {}).get("trigger_edge"), "f")
         finally:
             os.unlink(path)
 

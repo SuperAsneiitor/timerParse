@@ -368,6 +368,39 @@ class TestFormat1ClockRegex(unittest.TestCase):
         self.assertEqual((data_pin or {}).get("Cap"), "0.0440")
         self.assertEqual((data_pin or {}).get("DTrans"), "0.0390")
 
+    def test_current_format1_misaligned_values_do_not_truncate(self):
+        """字段值与表头位置不严格对齐时，不应按固定列宽截断。"""
+        rpt = rf"""
+  Startpoint: SP/Q (falling edge-triggered flip-flop clocked by CORECLK)
+  Endpoint: EP/D (rising edge-triggered flip-flop clocked by CORECLK)
+  Common Pin: SP/Q
+  Scenario: demo
+
+{_f1_current_header_line()}
+{_F1_CURRENT_SEP}
+clock CORECLK (rise edge)  0.010000  0.010000
+SP/Q (DFF)  0.933600  0.027000  0.019000  0.079000  -0.052000  0.010000  0.130000 r
+SP/net0 (net)  1280  0.011000  0.141000
+data arrival time  0.130000
+
+clock CORECLK (rise edge)  0.020000  0.020000
+EP/D (DFF)  0.950000  0.021000  0.045000  0.027000  0.023000  0.055000  0.075000 f
+library setup time  0.029000  0.104000
+data required time  0.104000
+slack (MET)  0.010000
+"""
+        out = self._parse_text(rpt)
+        launch_pin = next((r for r in out.launch_rows if "SP/Q" in r.get("point", "")), None)
+        launch_net = next((r for r in out.launch_rows if "SP/net0" in r.get("point", "")), None)
+        self.assertIsNotNone(launch_pin)
+        self.assertIsNotNone(launch_net)
+        self.assertEqual((launch_pin or {}).get("Derate"), "0.933600")
+        self.assertEqual((launch_pin or {}).get("Cap"), "0.027000")
+        self.assertEqual((launch_pin or {}).get("DTrans"), "0.019000")
+        self.assertEqual((launch_pin or {}).get("Path"), "0.130000")
+        self.assertEqual((launch_pin or {}).get("trigger_edge"), "r")
+        self.assertEqual((launch_net or {}).get("Fanout"), "1280")
+
 
 class TestFormat1LvfParser(unittest.TestCase):
     """Format1 LVF 变体：三元组列、DTrans/Delta、双值 Derate。"""

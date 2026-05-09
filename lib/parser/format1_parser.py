@@ -2,7 +2,7 @@
 Format1（APR 风格）Timing 报告解析器。
 
 解析流程：按 Startpoint 行分块 → 每块内解析表头与 Point 表 → 用 clock/data arrival/library setup
-边界区分 launch 与 capture 段，固定列宽提取 Fanout/Derate/Cap/Trans/Location/Incr/Path/trigger_edge。
+边界区分 launch 与 capture 段，按行类型解释数值 token，避免字段宽度漂移造成截断。
 """
 from __future__ import annotations
 
@@ -327,11 +327,12 @@ class Format1Parser(TimeParser):
             out.append(tok)
         return out
 
-    def _parseClassicByTokens(self, line: str) -> tuple[str, Dict[str, str]]:
+    def _parseClassicByTokens(self, line: str, row_kind: str = "") -> tuple[str, Dict[str, str]]:
         """
-        classic 行按字段分隔解析：
-        Point | Fanout | Derate | Cap | DTrans | Trans | Delta | Incr | Path
-        对短行（如 clock/data arrival）仅提取 point，并交由 _parseNumericColumns 补 Incr/Path。
+        classic 行按字段分隔解析。
+
+        不按表头列宽切片：真实报告里字段值可能压到下一列区域，固定位置切片会截断。
+        这里先按 2+ 空白识别 point，再结合 row_kind 和 token 数量恢复空 Fanout 等字段。
         """
         fields = self._splitByFieldGaps(line)
         if not fields:
@@ -339,47 +340,68 @@ class Format1Parser(TimeParser):
         point = fields[0]
         attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
         vals = self._normalizeTokenFragments(fields[1:])
-        ordered_cols = ["Fanout", "Derate", "Cap", "DTrans", "Trans", "Delta", "Incr", "Path"]
-        if len(vals) >= len(ordered_cols):
-            for i, col in enumerate(ordered_cols):
-                v = vals[i]
-                attrs[col] = "" if v == "-" else v
-        else:
-            if vals:
-                # 兼容旧格式：Point/Fanout/Derate/Cap/Trans/[Location]/Incr/Path
-                if len(vals) >= 6 and re.fullmatch(r"\d+", vals[0]):
-                    attrs["Fanout"] = vals[0]
-                    attrs["Derate"] = vals[1] if len(vals) > 1 else ""
-                    attrs["Cap"] = vals[2] if len(vals) > 2 else ""
-                    attrs["Trans"] = vals[3] if len(vals) > 3 else ""
-                    attrs["Incr"] = vals[-2]
-                    attrs["Path"] = vals[-1]
-                for token in vals:
-                    if re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
-                        attrs["Derate"] = token
+        if vals:
+            self._fillClassicAttrsFromTokens(attrs, vals, row_kind)
         attrs["D-Trans"] = attrs.get("DTrans", "")
         return point, attrs
 
-    def _parseClassicByColumns(self, line: str, col_pos: dict[str, int]) -> tuple[str, Dict[str, str]]:
-        """classic 行按固定列位置解析，保留中间空列。"""
-        attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
-        if not col_pos or "Point" not in col_pos:
-            return self._parseClassicByTokens(line)
+    @staticmethod
+    def _setCleanAttr(attrs: Dict[str, str], name: str, value: str) -> None:
+        """写入字段值，报告中的 '-' 视为空。"""
+        attrs[name] = "" if value == "-" else value
 
-        content = line.rstrip()
-        ordered = sorted(col_pos.items(), key=lambda item: item[1])
-        point_end = col_pos.get("Fanout", len(content))
-        point = content[col_pos["Point"] : point_end].strip()
+    def _fillClassicAttrsFromTokens(self, attrs: Dict[str, str], vals: list[str], row_kind: str) -> None:
+        """按行类型解释 classic 数值 token，避免依赖固定列位置。"""
+        kind = (row_kind or "").strip().lower()
+        first_is_fanout = bool(vals and re.fullmatch(r"\d+", vals[0] or ""))
 
-        for idx, (name, start) in enumerate(ordered):
-            if name == "Point":
-                continue
-            end = ordered[idx + 1][1] if idx + 1 < len(ordered) else len(content)
-            value = content[start:end].strip() if start < len(content) else ""
-            attrs[name] = "" if value == "-" else value
+        if kind == "net":
+            if first_is_fanout:
+                self._setCleanAttr(attrs, "Fanout", vals[0])
+                rest = vals[1:]
+            else:
+                rest = vals
+            if len(rest) >= 3:
+                self._setCleanAttr(attrs, "Cap", rest[0])
+                self._setCleanAttr(attrs, "Incr", rest[-2])
+                self._setCleanAttr(attrs, "Path", rest[-1])
+            elif len(rest) >= 2:
+                self._setCleanAttr(attrs, "Incr", rest[-2])
+                self._setCleanAttr(attrs, "Path", rest[-1])
+            return
 
-        attrs["D-Trans"] = attrs.get("DTrans", "")
-        return point, attrs
+        rest = vals
+        if first_is_fanout:
+            self._setCleanAttr(attrs, "Fanout", vals[0])
+            rest = vals[1:]
+
+        if kind in ("clock", "clock_net_delay", "library_setup", "path_check_period", "clock_reconv", "clock_uncertainty"):
+            if len(rest) >= 2:
+                self._setCleanAttr(attrs, "Incr", rest[-2])
+                self._setCleanAttr(attrs, "Path", rest[-1])
+            elif len(rest) == 1:
+                self._setCleanAttr(attrs, "Path", rest[-1])
+            return
+
+        if first_is_fanout and len(rest) >= 6:
+            # 兼容旧版：Point/Fanout/Derate/Cap/Trans/Location/Incr/Path。
+            for name, value in zip(["Derate", "Cap", "Trans", "Location"], rest[:4]):
+                self._setCleanAttr(attrs, name, value)
+            self._setCleanAttr(attrs, "Incr", rest[-2])
+            self._setCleanAttr(attrs, "Path", rest[-1])
+        elif len(rest) >= 7:
+            for name, value in zip(["Derate", "Cap", "DTrans", "Trans", "Delta", "Incr", "Path"], rest[:7]):
+                self._setCleanAttr(attrs, name, value)
+        elif len(rest) >= 6:
+            for name, value in zip(["Cap", "DTrans", "Trans", "Delta", "Incr", "Path"], rest[:6]):
+                self._setCleanAttr(attrs, name, value)
+        elif len(rest) >= 2:
+            self._setCleanAttr(attrs, "Incr", rest[-2])
+            self._setCleanAttr(attrs, "Path", rest[-1])
+
+        for token in vals:
+            if re.fullmatch(r"-?\d+\.\d+:-?\d+\.\d+", token):
+                attrs["Derate"] = token
 
     def _parseLvfByTokens(self, line: str) -> tuple[str, Dict[str, str]]:
         """
@@ -452,8 +474,7 @@ class Format1Parser(TimeParser):
             point, attrs = self._parseLvfByTokens(line)
             return point, attrs
 
-        col_pos = (table_info or {}).get("col_pos") or {}
-        point, attrs = self._parseClassicByColumns(line, col_pos)
+        point, attrs = self._parseClassicByTokens(line, row_kind)
         merged: Dict[str, str] = {name: "" for name in self.attrs_order}
         for key, value in attrs.items():
             merged[key] = value

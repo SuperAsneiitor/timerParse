@@ -317,6 +317,9 @@ class Format2Parser(TimeParser):
             if value in ("-", "-0.000"):
                 value = ""
             out[name] = value
+        tokens = content.strip().split()
+        if tokens:
+            out["Type"] = tokens[0]
         return out
 
     def _descFromContent(self, content: str, col_pos: dict[str, int]) -> str:
@@ -330,6 +333,15 @@ class Format2Parser(TimeParser):
         if m:
             return m.group(1).strip()
         return ""
+
+    def _metricPrefixBeforeDesc(self, content: str, col_pos: dict[str, int]) -> str:
+        """取描述分隔符前的 metric 区域，避免按 Description 列位置截断。"""
+        m = re.search(r"\s[/\\]\s+\S", content)
+        if m:
+            return content[: m.start()].rstrip()
+        if "Description" in col_pos:
+            return content[: col_pos["Description"]].rstrip()
+        return content.rstrip()
 
     def _triggerEdgeFromLine(self, content: str) -> str:
         line = content.strip()
@@ -349,7 +361,7 @@ class Format2Parser(TimeParser):
         raw = self._valuesByColumns(content, col_pos)
         type_str = self._layout_runtime.classifyPointType(content, type_hint=(raw.get("Type") or ""))
         if type_str == "pin":
-            desc_col = content[col_pos["Description"] :].strip()
+            desc_col = self._descFromPinLine(content) or self._descFromContent(content, col_pos)
             pin_name = _pinNameFromDesc(desc_col)
             type_str = "output_pin" if pin_name in _OUTPUT_PIN_NAMES else "input_pin"
         parsers = {
@@ -435,14 +447,18 @@ class Format2Parser(TimeParser):
         out.reverse()
         return out
 
-    def _extractPinMetrics(self, content: str, is_output: bool) -> tuple[str, str, str, str, str, str, str]:
+    def _extractPinMetrics(
+        self, content: str, is_output: bool
+    ) -> tuple[str, str, str, str, str, str, str, str, str]:
         """
             ?pin        ?
-        (trans, derate, x, y, d_delay, delay, time)
+        (d_trans, trans, derate, voltage, x, y, d_delay, delay, time)
                                 ?x/y        ?Delay/Time ?
         """
+        d_trans = ""
         trans = ""
         derate = ""
+        voltage = ""
         x_val = ""
         y_val = ""
         d_delay = ""
@@ -465,33 +481,51 @@ class Format2Parser(TimeParser):
         nums = re.findall(r"-?\d+(?:\.\d+)?", prefix)
         if nums:
             if is_output:
-                # output_pin 的尾部时序数值稳定为 [Trans, (Derate), Delay, Time]
+                # output_pin: [Trans, Derate, (Voltage), Delay, Time]
                 time = nums[-1]
                 if len(nums) >= 2:
                     delay = nums[-2]
-                if not derate and len(nums) >= 3:
-                    derate = nums[-3]
-                if len(nums) >= 4:
+                if not derate:
+                    if len(nums) >= 5:
+                        derate = nums[-4]
+                        voltage = nums[-3]
+                    elif len(nums) >= 4:
+                        derate = nums[-3]
+                elif len(nums) >= 4:
+                    voltage = nums[-3]
+                if len(nums) >= 5:
+                    trans = nums[-5]
+                elif len(nums) >= 4 and not voltage:
                     trans = nums[-4]
                 elif derate and len(nums) >= 3:
-                    # Derate 已被上面正则移除（双值场景）时，Trans 在 -3
+                    # 双值 Derate 已被移除时，Trans 在尾部三元组前。
                     trans = nums[-3]
             else:
-                # input_pin 的尾部时序数值稳定为 [Trans, (Derate), D-Delay, Delay, Time]
+                # input_pin: [D-Trans, Trans, Derate, (Voltage), D-Delay, Delay, Time]
                 time = nums[-1]
                 if len(nums) >= 2:
                     delay = nums[-2]
                 if len(nums) >= 3:
                     d_delay = nums[-3]
-                if not derate and len(nums) >= 4:
-                    derate = nums[-4]
-                if len(nums) >= 5:
+                if not derate:
+                    if len(nums) >= 7:
+                        derate = nums[-5]
+                        voltage = nums[-4]
+                    elif len(nums) >= 6:
+                        derate = nums[-4]
+                elif len(nums) >= 6:
+                    voltage = nums[-4]
+                if len(nums) >= 7:
+                    d_trans = nums[-7]
+                    trans = nums[-6]
+                elif len(nums) >= 6 and not voltage:
+                    d_trans = nums[-6]
                     trans = nums[-5]
-                elif derate and len(nums) >= 4:
-                    # Derate 已被上面正则移除（双值场景）时，Trans 在 -4
+                elif derate and len(nums) >= 5:
+                    d_trans = nums[-5]
                     trans = nums[-4]
 
-        return trans, derate, x_val, y_val, d_delay, delay, time
+        return d_trans, trans, derate, voltage, x_val, y_val, d_delay, delay, time
 
     def _isReasonableNum(self, s: str, max_abs: float = 10.0) -> bool:
         try:
@@ -502,17 +536,18 @@ class Format2Parser(TimeParser):
 
     def _parseInputPin(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
-        prefix_area = content[: col_pos["Description"]] if "Description" in col_pos else content
-        trans, derate, x_val, y_val, d_delay, delay, time = self._extractPinMetrics(prefix_area, is_output=False)
+        prefix_area = self._metricPrefixBeforeDesc(content, col_pos)
+        d_trans, trans, derate, voltage, x_val, y_val, d_delay, delay, time = self._extractPinMetrics(prefix_area, is_output=False)
         attrs["Derate"] = derate or (raw.get("Derate") or "").strip().replace(" ", "")
         attrs["DerateA"], attrs["DerateB"] = self._splitDeratePair(attrs["Derate"])
         attrs["x-coord"] = x_val or self._parseXy(self._xyCellFromRaw(raw), "x-coord")
         attrs["y-coord"] = y_val or self._parseXy(self._xyCellFromRaw(raw), "y-coord")
         raw_dtrans = (raw.get("D-Trans") or "").strip()
         raw_trans = (raw.get("Trans") or "").strip()
-        attrs["D-Trans"] = raw_dtrans if self._isReasonableNum(raw_dtrans, 1.0) else ""
+        attrs["D-Trans"] = d_trans if self._isReasonableNum(d_trans, 1.0) else (raw_dtrans if self._isReasonableNum(raw_dtrans, 1.0) else "")
         attrs["Trans"] = trans if self._isReasonableNum(trans, 1.0) else (raw_trans if self._isReasonableNum(raw_trans, 1.0) else "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
+        raw_voltage = (raw.get("Voltage") or "").strip()
+        attrs["Voltage"] = voltage if self._isReasonableNum(voltage, 2.0) else raw_voltage
         attrs["Type"] = raw.get("Type", "")
         raw_ddelay = (raw.get("D-Delay") or "").strip()
         raw_delay = (raw.get("Delay") or "").strip()
@@ -528,15 +563,16 @@ class Format2Parser(TimeParser):
 
     def _parseOutputPin(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
-        prefix_area = content[: col_pos["Description"]] if "Description" in col_pos else content
-        trans, derate, x_val, y_val, _d_delay, delay, time = self._extractPinMetrics(prefix_area, is_output=True)
+        prefix_area = self._metricPrefixBeforeDesc(content, col_pos)
+        _d_trans, trans, derate, voltage, x_val, y_val, _d_delay, delay, time = self._extractPinMetrics(prefix_area, is_output=True)
         attrs["Derate"] = derate or (raw.get("Derate") or "").strip().replace(" ", "")
         attrs["DerateA"], attrs["DerateB"] = self._splitDeratePair(attrs["Derate"])
         attrs["x-coord"] = x_val or self._parseXy(self._xyCellFromRaw(raw), "x-coord")
         attrs["y-coord"] = y_val or self._parseXy(self._xyCellFromRaw(raw), "y-coord")
         raw_trans = (raw.get("Trans") or "").strip()
         attrs["Trans"] = trans if self._isReasonableNum(trans, 1.0) else (raw_trans if self._isReasonableNum(raw_trans, 1.0) else "")
-        attrs["Voltage"] = (raw.get("Voltage") or "").strip()
+        raw_voltage = (raw.get("Voltage") or "").strip()
+        attrs["Voltage"] = voltage if self._isReasonableNum(voltage, 2.0) else raw_voltage
         attrs["Type"] = raw.get("Type", "")
         raw_delay = (raw.get("Delay") or "").strip()
         raw_time = (raw.get("Time") or "").strip()
@@ -579,10 +615,15 @@ class Format2Parser(TimeParser):
     def _parsePort(self, raw: dict[str, str], content: str, col_pos: dict[str, int]) -> tuple[str, dict[str, str]]:
         attrs = {k: "" for k in self.attrs_order}
         attrs["Type"] = raw.get("Type", "")
+        prefix_area = self._metricPrefixBeforeDesc(content, col_pos)
         attrs["Voltage"] = (raw.get("Voltage") or "").strip()
         attrs["Trans"] = (raw.get("Trans") or "").strip()
         derate_raw = (raw.get("Derate") or "").strip()
-        if "{" in derate_raw:
+        coord_m = re.search(r"\{\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\}", prefix_area)
+        if coord_m:
+            attrs["x-coord"] = coord_m.group(1)
+            attrs["y-coord"] = coord_m.group(2)
+        elif "{" in derate_raw:
             _, x_val, y_val = self._splitDerateAndXy(derate_raw)
             attrs["x-coord"] = x_val
             attrs["y-coord"] = y_val
@@ -590,7 +631,7 @@ class Format2Parser(TimeParser):
             xy_cell = self._xyCellFromRaw(raw)
             attrs["x-coord"] = self._parseXy(xy_cell, "x-coord")
             attrs["y-coord"] = self._parseXy(xy_cell, "y-coord")
-        layout_vals = self._layout_runtime.extractByTypeLayout("port", content)
+        layout_vals = self._layout_runtime.extractByTypeLayout("port", prefix_area)
         attrs["Delay"] = layout_vals.get("Delay", self._firstNumericFromCell(raw.get("Delay", "")))
         attrs["Time"] = layout_vals.get("Time", self._firstNumericFromCell(raw.get("Time", "")))
         attrs["trigger_edge"] = self._triggerEdgeFromLine(content)

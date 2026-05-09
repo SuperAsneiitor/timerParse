@@ -46,7 +46,7 @@ PT_REPORT_POINT_LAST_SUMMARY = r"""
   ------------------------------------------------------------------------------------------------
                                                 0.0000    0.0000    0.0000              clock PTCLK (rise edge)
                       0.0010  0.0100  1.1000    0.0000    0.0500 &  0.0500 r  0.9000    U_START/Q (DFF) <-
-                      0.0010  0.0100  1.1000    0.0000    0.0200 &  0.0700 r  0.9000    U_MID/A (BUF) <-
+                      0.0010  0.0100  1.1000    0.0000    0.0200 &  0.0700 r  0.9000    U123_MID/A (BUF) <-
                                                                     0.0700              data arrival time
 
                                                 0.0000    0.0000    0.0000              clock PTCLK (rise edge)
@@ -109,7 +109,7 @@ class TestPtParser(unittest.TestCase):
         """Point 尾列含 cell 名数字时，固定列值和 trigger_edge 不应被 fallback 覆盖。"""
         out = self._parse_text(PT_REPORT_POINT_LAST_SUMMARY)
         launch_pin = next((r for r in out.launch_rows if "U_START/Q" in (r.get("point") or "")), None)
-        mid_pin = next((r for r in out.launch_rows if "U_MID/A" in (r.get("point") or "")), None)
+        mid_pin = next((r for r in out.launch_rows if "U123_MID/A" in (r.get("point") or "")), None)
         capture_pin = next((r for r in out.capture_rows if "U_END/D" in (r.get("point") or "")), None)
         self.assertIsNotNone(launch_pin)
         self.assertIsNotNone(mid_pin)
@@ -124,6 +124,21 @@ class TestPtParser(unittest.TestCase):
         self.assertEqual((launch_pin or {}).get("trigger_edge"), "r")
         self.assertEqual((mid_pin or {}).get("trigger_edge"), "r")
         self.assertEqual((capture_pin or {}).get("trigger_edge"), "f")
+
+    def test_point_last_misaligned_values_do_not_truncate_or_read_point_digits(self):
+        """Point 尾列位置漂移时，数值从 point 前 token 提取，实例名数字不参与字段映射。"""
+        rpt = PT_REPORT_POINT_LAST_SUMMARY.replace(
+            "0.0010  0.0100  1.1000    0.0000    0.0200 &  0.0700 r  0.9000    U123_MID/A",
+            "0.001000  0.010000  1.100000  0.000000  0.020000 &  0.070000 r  0.900000    U123_MID/A",
+        )
+        out = self._parse_text(rpt)
+        mid_pin = next((r for r in out.launch_rows if "U123_MID/A" in (r.get("point") or "")), None)
+        self.assertIsNotNone(mid_pin)
+        self.assertEqual((mid_pin or {}).get("DTrans"), "0.0010")
+        self.assertEqual((mid_pin or {}).get("Trans"), "0.0100")
+        self.assertEqual((mid_pin or {}).get("Derate"), "1.1000")
+        self.assertEqual((mid_pin or {}).get("Path"), "0.0700")
+        self.assertEqual((mid_pin or {}).get("Voltage"), "0.9000")
 
 
 if __name__ == "__main__":

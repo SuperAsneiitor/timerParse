@@ -11,7 +11,6 @@ from typing import Any, Dict, List
 
 from .format1_parser import Format1Parser
 from .layout_runtime import LayoutRuntime
-from .time_parser_base import TimeParser
 
 
 PT_FLOAT_COLS = ("Cap", "DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage")
@@ -79,30 +78,64 @@ class PtParser(Format1Parser):
 
     @staticmethod
     def _parsePtLineByColumns(line: str, col_pos: dict[str, int], attrs_order: list[str]) -> tuple[str, dict[str, str]]:
-        """按 PT 表头位置解析一行，兼容 Point 在首列或尾列。"""
+        """提取 PT point 文本；字段值由 token 语义解析，避免固定列截断。"""
         content = line.rstrip()
         attrs: dict[str, str] = {name: "" for name in attrs_order}
-        if not content.strip() or not col_pos:
+        if not content.strip():
             return "", attrs
         if "Point" in col_pos:
             point_start = col_pos["Point"]
             metric_positions = [
                 pos for name, pos in col_pos.items() if name != "Point" and name in attrs_order
             ]
-            if metric_positions and point_start < min(metric_positions):
-                return TimeParser.parseFixedWidthAttrs(content, col_pos, attrs_order)
-            point = content[point_start:].strip()
-            ordered = sorted(
-                [name for name in attrs_order if name in col_pos and col_pos[name] < point_start],
-                key=lambda x: col_pos[x],
-            )
-            for i, name in enumerate(ordered):
-                start = col_pos[name]
-                end = col_pos[ordered[i + 1]] if i + 1 < len(ordered) else point_start
-                value = content[start:end].strip() if start < end else ""
-                attrs[name] = "" if value == "-" else value
+            if metric_positions and point_start > min(metric_positions):
+                point = PtParser._extractPointLastText(content)
+                return point, attrs
+            fields = Format1Parser._splitByFieldGaps(content)
+            point = fields[0] if fields else ""
             return point, attrs
-        return TimeParser.parseFixedWidthAttrs(content, col_pos, attrs_order)
+        fields = Format1Parser._splitByFieldGaps(content)
+        return (fields[0] if fields else ""), attrs
+
+    @staticmethod
+    def _isPointLastLayout(col_pos: dict[str, int]) -> bool:
+        """判断 PT 表格是否为数值列在前、Point 在末尾。"""
+        if "Point" not in col_pos:
+            return False
+        point_start = col_pos["Point"]
+        metric_positions = [pos for name, pos in col_pos.items() if name != "Point"]
+        return bool(metric_positions and point_start > min(metric_positions))
+
+    @staticmethod
+    def _extractPointLastText(line: str) -> str:
+        """Point 尾列版式：取最后一个数值 token 之后的文本作为 point。"""
+        tokens = (line or "").strip().split()
+        last_numeric_idx = -1
+        for idx, token in enumerate(tokens):
+            if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
+                last_numeric_idx = idx
+        if last_numeric_idx < 0:
+            return ""
+        return " ".join(tokens[last_numeric_idx + 1 :]).strip()
+
+    @staticmethod
+    def _metricTextWithoutPoint(line: str, col_pos: dict[str, int]) -> str:
+        """去掉 point 文本后再提取数值，防止实例名中的数字污染字段。"""
+        content = line or ""
+        if PtParser._isPointLastLayout(col_pos):
+            tokens = content.strip().split()
+            last_numeric_idx = -1
+            for idx, token in enumerate(tokens):
+                if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
+                    last_numeric_idx = idx
+            if last_numeric_idx >= 0:
+                return " ".join(tokens[: last_numeric_idx + 1])
+            return ""
+
+        fields = Format1Parser._splitByFieldGaps(content)
+        if len(fields) > 1:
+            return " ".join(fields[1:])
+        return content
 
     @staticmethod
     def _mergeAttrsPreferFixedWidth(
@@ -297,24 +330,11 @@ class PtParser(Format1Parser):
 
     def _extractPathMetric(self, line: str, col_pos: dict[str, int]) -> str:
         """
-        从 PT 行的 Path 固定列提取指标值。
+        从 PT summary 行提取指标值。
 
-        生成版 PT 的 Point 位于尾列，summary 行形如：
-            <Path 数值>              data arrival time
-        因此不能使用“行尾数字”规则；优先按 Path 列切片，旧式 fixture 再回退到最后一个数值。
+        不按 Path 列位置切片：summary 行本身不含实例名，直接取行内最后一个数值即可兼容
+        “label 在前”和“label 在 Point 尾列”两种版式。
         """
-        if col_pos and "Path" in col_pos:
-            start = col_pos["Path"]
-            end = len(line)
-            for _, pos in sorted(col_pos.items(), key=lambda item: item[1]):
-                if pos > start:
-                    end = pos
-                    break
-            value = line[start:end].strip() if start < len(line) else ""
-            m = re.search(r"-?\d+(?:\.\d+)?", value)
-            if m:
-                return m.group(0)
-
         vm = re.findall(r"-?\d+(?:\.\d+)?", line)
         return vm[-1] if vm else ""
 
@@ -347,14 +367,6 @@ class PtParser(Format1Parser):
         if not row_kind:
             return None
 
-        layout_attrs = self._layout_runtime.extractRowKindNumeric(row_kind, line)
-        if layout_attrs and row_kind != "net":
-            attrs: Dict[str, str] = {name: "" for name in self.attrs_order}
-            for col, val in layout_attrs.items():
-                if col in attrs and val:
-                    attrs[col] = val
-            return attrs
-
         expected_by_kind: Dict[str, List[str]] = {
             "clock": ["Delta", "Incr", "Path"],
             "clock_src_lat": ["Delta", "Incr", "Path"],
@@ -379,7 +391,8 @@ class PtParser(Format1Parser):
                 attrs[name] = nums[i]
             return attrs
 
-        tokens_iter = list(re.finditer(r"-?\d+(?:\.\d+)?", line))
+        metric_text = self._metricTextWithoutPoint(line, col_pos)
+        tokens_iter = list(re.finditer(r"-?\d+(?:\.\d+)?", metric_text))
         if not tokens_iter:
             return None
         tokens = [m.group(0) for m in tokens_iter]
@@ -389,6 +402,14 @@ class PtParser(Format1Parser):
         tail = tokens[-limit:] if limit else []
         for i, name in enumerate(expected[:limit]):
             attrs[name] = tail[i]
+        if row_kind == "pin":
+            edge_match = re.search(
+                r"-?\d+(?:\.\d+)?\s*&?\s+([rf])\s+-?\d+(?:\.\d+)?\s*$",
+                metric_text.strip(),
+                re.IGNORECASE,
+            )
+            if edge_match:
+                attrs["trigger_edge"] = edge_match.group(1).lower()
         return attrs
 
     def buildPointRow(
