@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import log_util
 from .parser.engine import create_timing_report_parser, detect_report_format
+from .parser.io_util import openReportText
 from .parser.time_parser_base import ParseOutput, TimeParser
 
 # 抽取结果中保留的语义列（与格式无关的统一列集合）
@@ -294,7 +295,7 @@ def runExtract(args) -> int:
 
     format_key = args.format
     if format_key == "auto":
-        with open(rpt_path, "r", encoding="utf-8", errors="replace") as f:
+        with openReportText(rpt_path) as f:
             format_key = detect_report_format(f.read())
         log_util.brief(f"Format: {format_key} (auto-detected)")
     else:

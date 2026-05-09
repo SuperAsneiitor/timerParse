@@ -10,6 +10,7 @@ import re
 from typing import Any, Dict, List
 
 from .time_parser_base import TimeParser
+from .io_util import openReportText
 from .layout_runtime import LayoutRuntime
 
 
@@ -114,7 +115,7 @@ class Format1Parser(TimeParser):
 
     def scanPathBlocks(self, report_path: str) -> list[tuple[int, str]]:
         """按 Startpoint 行切分 path 块，返回 [(path_id, path_text), ...]。"""
-        with open(report_path, "r", encoding="utf-8", errors="replace") as f:
+        with openReportText(report_path) as f:
             lines = f.read().splitlines()
 
         blocks: list[tuple[int, str]] = []

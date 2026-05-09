@@ -63,6 +63,12 @@ table:
 
 ---
 
+## 4.1 输入为 gzip（`.gz`）
+
+`extract` 与 `extract-chaos` 接受 **gzip 压缩的 UTF-8 文本报告**：当文件路径（不区分大小写）以 **`.gz`** 结尾时，按流解压后走与明文 `.rpt` 相同的分块与解析逻辑；**`-f auto`** 同样有效。实现见 **`lib/parser/io_util.py`**（`openReportText`）。单测见 **`tests/test_report_gzip_io.py`**。
+
+---
+
 ## 5. 验证方式
 
 1. **固定脚本入口**：执行 `python scripts/run_validation_flow.py`。

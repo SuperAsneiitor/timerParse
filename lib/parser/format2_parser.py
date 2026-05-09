@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from .time_parser_base import TimeParser
+from .io_util import openReportText
 from .layout_runtime import LayoutRuntime
 
 
@@ -128,7 +129,7 @@ class Format2Parser(TimeParser):
     )
 
     def scanPathBlocks(self, report_path: str) -> list[tuple[int, str]]:
-        with open(report_path, "r", encoding="utf-8", errors="replace") as f:
+        with openReportText(report_path) as f:
             lines = f.readlines()
         blocks: list[tuple[int, str]] = []
         i = 0

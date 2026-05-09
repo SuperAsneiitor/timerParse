@@ -15,6 +15,7 @@ from typing import Any
 from .. import log_util
 from ..extract import SEMANTIC_POINT_ATTRS, _hasLvfSignals
 from .engine import create_timing_report_parser, detect_report_format
+from .io_util import openReportText
 from .time_parser_base import ParseOutput, TimeParser
 
 # 与 CLI --format 一致；apr 在入口处规范为 format1
@@ -107,7 +108,7 @@ def split_report_into_blocks(report_path: str, format_key: str) -> list[tuple[in
 
 
 def _split_format1(report_path: str) -> list[tuple[int, str]]:
-    with open(report_path, "r", encoding="utf-8", errors="replace") as f:
+    with openReportText(report_path) as f:
         lines = f.read().splitlines()
     re_startpoint = re.compile(r"^\s*Startpoint:")
     re_slack = re.compile(r"^\s*slack\s+\((VIOLATED|MET)\)(?:\s|$)")
@@ -133,7 +134,7 @@ def _split_format1(report_path: str) -> list[tuple[int, str]]:
 
 
 def _split_format2(report_path: str) -> list[tuple[int, str]]:
-    with open(report_path, "r", encoding="utf-8", errors="replace") as f:
+    with openReportText(report_path) as f:
         lines = f.readlines()
     re_path_start = re.compile(r"^\s*Path Start\s+:\s+(.+?)\s+\(\s*flip-flop[^)]*,\s*(\w+)\s*\)\s*$")
     re_slack_line = re.compile(r"slack\s*\((?:violated|met)\)", re.IGNORECASE)
@@ -159,7 +160,7 @@ def _split_format2(report_path: str) -> list[tuple[int, str]]:
 
 
 def _split_pt(report_path: str) -> list[tuple[int, str]]:
-    with open(report_path, "r", encoding="utf-8", errors="replace") as f:
+    with openReportText(report_path) as f:
         lines = f.read().splitlines()
     re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")
     re_slack = re.compile(r"^\s+slack\s+\((VIOLATED|MET)\)\s")
@@ -447,7 +448,7 @@ def _write_csv(output_path: str, rows: list[dict], columns: list[str]) -> None:
 
 
 def detect_format_from_report_file(report_path: str) -> str:
-    with open(report_path, "r", encoding="utf-8", errors="replace") as f:
+    with openReportText(report_path) as f:
         peek = f.read(8192)
     return detect_report_format(peek or "")
 

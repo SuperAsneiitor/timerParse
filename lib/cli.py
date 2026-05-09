@@ -112,7 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
             "      （省略子命令时等价于 extract）"
         ),
     )
-    ext.add_argument("input_rpt", metavar="REPORT", help="Timing 报告文件路径")
+    ext.add_argument(
+        "input_rpt",
+        metavar="REPORT",
+        help="Timing 报告文件路径（.gz 结尾则 gzip 解压后按 UTF-8 读取）",
+    )
     ext.add_argument(
         "-o",
         "--output-dir",
@@ -165,7 +169,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="多进程抽取：1 分割器 + N Worker，解析与 extract 一致（lib.parser）",
         parents=[parent],
     )
-    exC.add_argument("input_rpt", help="输入 timing 报告文件路径")
+    exC.add_argument(
+        "input_rpt",
+        help="输入 timing 报告文件路径（.gz 结尾则 gzip 解压后按 UTF-8 读取）",
+    )
     exC.add_argument("-o", "--output-dir", default="output_parser_chaos", help="输出目录（默认：output_parser_chaos）")
     exC.add_argument(
         "-f",

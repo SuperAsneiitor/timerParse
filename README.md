@@ -16,6 +16,8 @@
 
 **说明**：仓库默认不把大体积测试数据/本地输出纳入版本控制（见 `.gitignore`）。请自备 `.rpt` 等输入，并把输出指到你自己的目录。
 
+**gzip 输入**：`extract` / `extract-chaos` 支持路径以 **`.gz`** 结尾的报告（gzip 压缩的 UTF-8 文本，例如 `report.rpt.gz`）。`-f auto` 会先解压再识别格式。解压会占用少量额外 CPU；若追求极致吞吐可继续使用明文 `.rpt`。
+
 ---
 
 ## 2. 推荐调用：`lake`（csh/tcsh）
@@ -89,6 +91,8 @@ lake extract path/to/report.rpt -o path/to/out
 
 ```bash
 lake extract input/report.rpt -o output/extract -f auto -j 4
+# 或 gzip 压缩的同内容报告
+lake extract input/report.rpt.gz -o output/extract -f auto -j 4
 ```
 
 常用输出（在 `-o` 目录下）：`launch_path.csv`、`capture_path.csv`、`path_summary.csv`、`launch_clock_path.csv`、`data_path.csv`。
@@ -160,7 +164,7 @@ lake gen-report config/gen_report/format2.yaml -o output/gen.rpt -s 42
 ## 9. 开发者：运行测试（可选）
 
 ```bash
-python -m unittest tests.test_format1_parser tests.test_format2_parser tests.test_pt_parser tests.test_gen_pt_report_timing tests.test_compare_path_summary -v
+python -m unittest tests.test_format1_parser tests.test_format2_parser tests.test_pt_parser tests.test_gen_pt_report_timing tests.test_compare_path_summary tests.test_report_gzip_io -v
 ```
 
 测试产物建议写入 `test_results/`（见 `test_results/README.md`）。
@@ -184,7 +188,7 @@ python -m unittest tests.test_format1_parser tests.test_format2_parser tests.tes
 
 | 参数 | 说明 |
 |------|------|
-| `REPORT` | 输入 timing report 文件路径（位置参数） |
+| `REPORT` | 输入 timing report 文件路径（位置参数）；若以 **`.gz`** 结尾则按 gzip 解压读取 |
 | `-o` / `--output-dir` | 输出目录（默认 `output_lib`） |
 | `-f` / `--format` | `auto` \| `format1` \| `format2` \| `pt` \| `apr`（默认 `auto`） |
 | `-j` / `--jobs N` | 并行进程数（默认 1） |
@@ -200,7 +204,7 @@ LVF 与非 LVF 的使用建议：
 
 | 参数 | 说明 |
 |------|------|
-| `input_rpt` | 输入 timing 报告文件路径（位置参数） |
+| `input_rpt` | 输入 timing 报告文件路径（位置参数）；若以 **`.gz`** 结尾则按 gzip 解压读取 |
 | `-o` / `--output-dir` | 输出目录（默认 `output_parser_chaos`） |
 | `-f` / `--format` | `auto` \| `format1` \| `format2` \| `pt` \| `apr`（默认 `auto`） |
 | `-j` / `--jobs N` | Worker 进程数（默认 **3**） |

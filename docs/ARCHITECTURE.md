@@ -22,6 +22,7 @@
 - **`format1_parser.py` / `format2_parser.py` / `pt_parser.py`**：三种版式的具体解析（`scanPathBlocks`、`parseOnePath`）。
 - **`layout_config.py` / `layout_runtime.py`**：加载 `config/parse_layouts/*.yaml`，供按类型 + token 的辅助解析逻辑使用。
 - **`engine.py`**：`create_timing_report_parser()`、`detect_report_format()`；**`TimingParserV2`**：基于 `lib/parser/layouts/*.yaml` 的轻量布局解析（`parse_text` → `ParseResult`），与完整 CSV 流水线可并存。
+- **`io_util.py`**：报告文本统一打开（明文或 **`.gz`** gzip），供解析器与 `extract` / `parallel_extract` 读入。
 - **`parallel_extract.py`**：多进程队列抽取（`runExtractParallel` / `runExtractChaos`）；与 `extract` 共用同一套 `TimeParser`，仅调度模型不同。
 - **`layouts/*.yaml`**：布局引擎用配置；与 `config/parse_layouts/` 可配合使用。
 

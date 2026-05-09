@@ -40,6 +40,7 @@ runExtractParallel(
 兼容旧名：`runExtractChaos`、`detectFormatFromReport` 与 `parallel_extract` 中同名符号等价。
 
 - **格式**：`auto` 时由 **`detect_report_format`**（与 `lib.parser` 一致）识别。
+- **gzip**：报告路径以 **`.gz`** 结尾时自动解压读取（与 `extract` 相同，见 `lib/parser/io_util.py`）。
 - **`-j`**：Worker 数量（CLI `extract-chaos` 默认 3）；大文件可适当增大，注意内存与句柄。
 - **分片**：`-p N`、`-m` 与 `extract` 语义相同。
 - **LVF**：`--lvf` 与 `extract --lvf` 相同，要求抽取结果中出现 LVF 语义字段，否则报错。
