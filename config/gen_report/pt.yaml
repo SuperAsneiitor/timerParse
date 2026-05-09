@@ -38,7 +38,8 @@ table:
     Derate: { value: { type: fixed, value: "1.1000" }, profiles: [pin_rows] }
     Delta:
       value: { type: random_float, min: -0.0200, max: 0.0200, decimals: 4 }
-      when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, output_pin, endpoint, port]
+      # PT 语义：Delta 仅出现在 input pin 与 clock/port 等输入侧；output pin 不应有 Delta 数值。
+      when_type: [clock, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, pin, input_pin, endpoint, port]
     Incr:
       value: { type: random_float, min: 0.0000, max: 0.0300, decimals: 4 }
       when_type: [clock, pin, input_pin, output_pin, net, clock_net_delay, clock_reconv, clock_uncertainty, library_setup, port]

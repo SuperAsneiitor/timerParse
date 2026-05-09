@@ -669,12 +669,21 @@ class Format1Parser(TimeParser):
         return m.group(1).lower() if m else ""
 
     def _inferPointType(self, point_name: str) -> str:
-        """    point            et / output_pin / input_pin """
+        r"""根据 point 名末段引脚名判定为 net / output_pin / input_pin。
+
+        历史正则 ``re.search(r"/([A-Za-z0-9_\[\]]+)...")`` 会贪婪匹配第一个 ``/`` 后的实例段
+        （如 ``/path_1``），导致所有 pin 都被误判为 input_pin，进而 applyTypeFilter 不能
+        清空 output_pin 行的 Delta 等列。改为只取最后一段 ``/xxx``，并去除 ``" (CELL)"``、
+        ``"<-"``、`` [bit]`` 等尾缀，仅保留引脚名比对。
+        """
         if not point_name or "(net)" in point_name:
             return "net"
-        m = re.search(r"/([A-Za-z0-9_\[\]]+)\s*\(?[A-Z]?", point_name)
-        pin = m.group(1) if m else ""
-        if pin in self._output_pin_names:
+        last = point_name.rstrip().split("/")[-1]
+        # 截掉 " (cell)"、" <-" 等空格后部分，仅保留首个 token 作为引脚名。
+        pin_token = re.split(r"[\s(]", last, maxsplit=1)[0]
+        # 兼容 D[0]/Q[1] 这种位宽形式。
+        pin_core = re.split(r"\[", pin_token, maxsplit=1)[0]
+        if pin_core in self._output_pin_names:
             return "output_pin"
         return "input_pin"
 
