@@ -62,6 +62,20 @@ class PtReport(TimingReportTemplate):
     def default_cumulative_rules(self) -> dict[str, str]:
         return {"Path": "Incr"}
 
+    @staticmethod
+    def _render_pt_cells(plan, cells: dict[str, object]) -> str:
+        """按 PT 表头列宽渲染一行，空字段也保留列宽，保证值与列名位置一致。"""
+        parts: list[str] = []
+        for col in plan.column_order:
+            w = int(plan.col_widths.get(col, 16))
+            text = str(cells.get(col, "") or "")
+            parts.append(text.ljust(w)[:w])
+        return "".join(parts).rstrip()
+
+    def _render_header(self, plan) -> str:
+        """渲染 PT 表头；与表体共用同一列宽逻辑。"""
+        return self._render_pt_cells(plan, {col: col for col in plan.column_order})
+
     def _render_fixed_row(self, plan, point_text: str, incr_text: str = "", path_text: str = "") -> str:
         cells = {c: "" for c in plan.column_order}
         if "Point" in cells:
@@ -70,11 +84,7 @@ class PtReport(TimingReportTemplate):
             cells["Incr"] = incr_text
         if "Path" in cells:
             cells["Path"] = path_text
-        parts = []
-        for col in plan.column_order:
-            w = int(plan.col_widths.get(col, 16))
-            parts.append(str(cells.get(col, "")).ljust(w)[:w])
-        return "".join(parts).rstrip()
+        return self._render_pt_cells(plan, cells)
 
     @staticmethod
     def _format_with_edge(path_val: object, edge: str) -> str:
@@ -111,7 +121,8 @@ class PtReport(TimingReportTemplate):
 
     def render_row(self, plan, row_ctx: dict[str, Any], cumulative_targets: set[str], cumulative_sources: set[str]) -> str:
         """PT：表体列 Fanout 整数，关键浮点列保留 4 位小数。"""
-        from .base import RenderPlan, ValueResolver, _str_value
+        from .base import ValueResolver
+
         cells: list[str] = []
         for col in plan.column_order:
             cfg = plan.columns_config.get(col) or {}
@@ -129,11 +140,11 @@ class PtReport(TimingReportTemplate):
             spec = cfg.get("value") or cfg.get("spec") or {}
             val = ValueResolver.resolve_value(spec, {**row_ctx, "row": row_ctx, "path": row_ctx.get("path") or {}})
             cells.append(self._pt_cell_str(col, val))
-        parts = []
-        for i, col in enumerate(plan.column_order):
-            w = int(plan.col_widths.get(col, 16))
-            parts.append((cells[i] if i < len(cells) else "").ljust(w)[:w])
-        return "".join(parts).rstrip()
+        cell_map = {
+            col: cells[i] if i < len(cells) else ""
+            for i, col in enumerate(plan.column_order)
+        }
+        return self._render_pt_cells(plan, cell_map)
 
     def generate(
         self,
@@ -213,9 +224,7 @@ class PtReport(TimingReportTemplate):
             lines.append(self.render_title_block(title_config, path_ctx))
             lines.append("")
 
-            header = "".join(
-                [c.ljust(int(plan.col_widths.get(c, 16)))[: int(plan.col_widths.get(c, 16))] for c in plan.column_order]
-            ).rstrip()
+            header = self._render_header(plan)
             lines.append("  " + header)
             header_sep = "-" * max(len(header), 96)
             lines.append("  " + header_sep)

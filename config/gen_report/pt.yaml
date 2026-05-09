@@ -33,7 +33,10 @@ table:
   columns:
     Fanout: { value: { type: random_int, min: 1, max: 6 }, profiles: [net_rows] }
     Cap: { value: { type: random_float, min: 0.000, max: 0.050, decimals: 2 }, profiles: [net_rows] }
-    DTrans: { value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }, when_type: [pin, input_pin, output_pin, port] }
+    DTrans:
+      value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }
+      # PT 语义：DTrans 仅 input pin 有值；output pin/port 不应有 DTrans。
+      when_type: [input_pin]
     Trans: { value: { type: random_float, min: 0.0000, max: 0.0200, decimals: 4 }, when_type: [pin, input_pin, output_pin, port] }
     Derate: { value: { type: fixed, value: "1.1000" }, profiles: [pin_rows] }
     Delta:

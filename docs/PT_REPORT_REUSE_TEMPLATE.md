@@ -52,6 +52,7 @@
 ### 2.2 字段展示规则
 
 - `Derate`：pin 行固定 4 位小数（示例 `1.1000`）
+- `DTrans`：PT 语义上只出现在 input pin；output pin/port 的 `DTrans` 必须为空。
 - `Delta`：PT 语义上只出现在 input pin 与 clock/port 等输入侧；output pin 的 `Delta` 必须为空。
 - `Mean` / `Sensit`：非 net 行建议 4 位小数，net 行可留空
 - `Incr` 追加后缀：`&`（例：`0.0453 &`）
@@ -132,6 +133,6 @@
 - [ ] Last common pin 是否在标题出现，且在 capture path point 中真实出现。
 - [ ] `clock source latency` 文案是否正确（不再是 `clock network delay (ideal)`）。
 - [ ] `Incr` 是否带 `&`，`Path` 是否带 `r/f`。
-- [ ] PT output pin 的 `Delta` 是否为空；判定应来自 `pin -> net` 拓扑，而不是 output pin 名称列表。
+- [ ] PT output pin 的 `DTrans` / `Delta` 是否为空；判定应来自 `pin -> net` 拓扑，而不是 output pin 名称列表。
 - [ ] slack 标签是否与数值符号一致。
 

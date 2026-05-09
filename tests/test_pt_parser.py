@@ -45,7 +45,7 @@ PT_REPORT_POINT_LAST_SUMMARY = r"""
   Fanout      Cap     DTrans  Trans   Derate    Delta     Incr      Path      Voltage   Point
   ------------------------------------------------------------------------------------------------
                                                 0.0000    0.0000    0.0000              clock PTCLK (rise edge)
-                      0.0010  0.0100  1.1000    0.0000    0.0500 &  0.0500 r  0.9000    U_START/Q (DFF) <-
+                              0.0100  1.1000              0.0500 &  0.0500 r  0.9000    U_START/Q (DFF) <-
   3           0.0200                                      0.0199    0.0896 r            U_START/net0 (net)
                       0.0010  0.0100  1.1000    0.0000    0.0200 &  0.0700 r  0.9000    U123_MID/A (BUF) <-
                                                                     0.0700              data arrival time
@@ -117,7 +117,7 @@ class TestPtParser(unittest.TestCase):
         self.assertIsNotNone(launch_net)
         self.assertIsNotNone(mid_pin)
         self.assertIsNotNone(capture_pin)
-        self.assertEqual((launch_pin or {}).get("DTrans"), "0.0010")
+        self.assertEqual((launch_pin or {}).get("DTrans"), "")
         self.assertEqual((launch_pin or {}).get("Trans"), "0.0100")
         self.assertEqual((launch_pin or {}).get("Derate"), "1.1000")
         # Q 为 output_pin：PT 语义无 Delta，占位列不参与映射。
@@ -155,6 +155,7 @@ class TestPtParser(unittest.TestCase):
         self.assertIsNotNone(launch_q)
         self.assertIsNotNone(capture_d)
         self.assertEqual((launch_q or {}).get("Delta"), "")
+        self.assertEqual((launch_q or {}).get("DTrans"), "")
         self.assertEqual((capture_d or {}).get("Delta"), "0.0000")
 
     def test_output_pin_detected_by_topology_not_name_list(self):

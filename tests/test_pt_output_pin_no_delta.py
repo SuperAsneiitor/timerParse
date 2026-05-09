@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""端到端：PT 报告与抽取 CSV 中 output pin 行不应出现 Delta 数值。"""
+"""端到端：PT 报告与抽取 CSV 中 output pin 行不应出现 DTrans/Delta 数值。"""
 from __future__ import annotations
 
 import csv
@@ -27,7 +27,7 @@ def _run(args: list[str]) -> None:
 
 
 class TestPtOutputPinNoDelta(unittest.TestCase):
-    """覆盖 PT 流程中 Delta 仅出现在 input pin 的语义。"""
+    """覆盖 PT 流程中 DTrans/Delta 仅出现在 input pin 的语义。"""
 
     def test_generated_pt_report_and_csv_have_empty_delta_for_output_pin(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -55,6 +55,8 @@ class TestPtOutputPinNoDelta(unittest.TestCase):
             self.assertGreaterEqual(header_idx, 0, "未找到 PT 表头")
 
             header_line = lines[header_idx]
+            dtrans_pos = header_line.index("DTrans")
+            trans_pos = header_line.index("Trans")
             delta_pos = header_line.index("Delta")
             delta_end = delta_pos + len("Delta")
 
@@ -70,6 +72,12 @@ class TestPtOutputPinNoDelta(unittest.TestCase):
                 # timing path 拓扑：net 前一个实例 pin 是 output pin，不依赖 pin 名称白名单。
                 if "(net)" not in next_line:
                     continue
+                dtrans_segment = ln[dtrans_pos:trans_pos] if trans_pos <= len(ln) else ""
+                self.assertEqual(
+                    dtrans_segment.strip(),
+                    "",
+                    f"PT 报告中 output pin 的 DTrans 列应为空，得到 {dtrans_segment!r} (line: {ln!r})",
+                )
                 segment = ln[delta_pos:delta_end] if delta_end <= len(ln) else ""
                 self.assertEqual(
                     segment.strip(),
@@ -101,6 +109,11 @@ class TestPtOutputPinNoDelta(unittest.TestCase):
                         # timing path 拓扑：net 前一个实例 pin 是 output pin。
                         if "(net)" not in next_point:
                             continue
+                        dtrans_val = (row.get("DTrans") or "").strip()
+                        self.assertEqual(
+                            dtrans_val, "",
+                            f"{csv_name}: output pin DTrans 应为空，得到 {dtrans_val!r} (point={point!r})",
+                        )
                         delta_val = (row.get("Delta") or "").strip()
                         self.assertEqual(
                             delta_val, "",

@@ -52,8 +52,8 @@ class PtParser(Format1Parser):
     default_attrs_by_type = {
         "net": ["Fanout", "Cap"],
         "input_pin": ["DTrans", "Trans", "Derate", "Delta", "Incr", "Path", "Voltage", "trigger_edge"],
-        # PT 语义：Delta 仅出现在 input pin；报告里 output 行可能仍有占位列，解析时跳过以免 Incr/Path 错位。
-        "output_pin": ["DTrans", "Trans", "Derate", "Incr", "Path", "Voltage", "trigger_edge"],
+        # PT 语义：output pin 不应有 DTrans/Delta；解析时跳过这些占位列以免 Incr/Path 错位。
+        "output_pin": ["Trans", "Derate", "Incr", "Path", "Voltage", "trigger_edge"],
     }
 
     _re_startpoint = re.compile(r"^\s+Startpoint:\s+(.+?)\s*$")
@@ -477,17 +477,24 @@ class PtParser(Format1Parser):
 
         attrs = {name: "" for name in self.attrs_order}
         if row_kind == "pin" and pin_ptype == "output_pin":
-            # 与 input 相同 token 数时第 4 个数为 Delta 占位，不参与 output 字段映射。
+            # 兼容历史报告中 output pin 仍带 DTrans/Delta 的情况；新规则下 output 只映射
+            # Trans/Derate/Incr/Path/Voltage，DTrans 和 Delta 均保持为空。
             if len(tokens) >= 7:
                 seg = tokens[-7:]
-                attrs["DTrans"] = seg[0]
                 attrs["Trans"] = seg[1]
                 attrs["Derate"] = seg[2]
                 attrs["Incr"] = seg[4]
                 attrs["Path"] = seg[5]
                 attrs["Voltage"] = seg[6]
+            elif len(tokens) == 6:
+                seg = tokens[-6:]
+                attrs["Trans"] = seg[1]
+                attrs["Derate"] = seg[2]
+                attrs["Incr"] = seg[3]
+                attrs["Path"] = seg[4]
+                attrs["Voltage"] = seg[5]
             else:
-                out_expected = ["DTrans", "Trans", "Derate", "Incr", "Path", "Voltage"]
+                out_expected = ["Trans", "Derate", "Incr", "Path", "Voltage"]
                 limit = min(len(tokens), len(out_expected))
                 tail = tokens[-limit:] if limit else []
                 for i, name in enumerate(out_expected[:limit]):

@@ -38,7 +38,7 @@ table:
 |------|------|------------|----------|---------------|--------------|
 | `Fanout` | row-level | int | 0 位 | net | 否 |
 | `Cap` | row-level | float | 3~4 位 | net / pin（视格式） | 否 |
-| `DTrans` | row-level | float | 4 位 | PT pin | 否 |
+| `DTrans` | row-level | float | 4 位 | PT input_pin；output_pin/port 必须为空 | 否 |
 | `Trans` | row-level | float | 3~4 位 | pin / input_pin / output_pin | 否 |
 | `Derate` | row-level | float/string | 固定 4 位（PT） | pin / input_pin / output_pin | 否 |
 | `Delta` | row-level | float | 4 位 | PT input_pin / clock / port 等输入侧；output_pin 必须为空 | 否 |
@@ -110,7 +110,8 @@ table:
   - HTML 汇总页按转置方式展示“误差区间占比统计”；三张 `error_range_hist_*` 图嵌入该统计模块。
 - `Voltage` 字段约束：仅 `pin/port` 行保留；非 pin/port 行（如 clock/net/constraint/required/arrival/slack）强制为空。
 - PT 的 input/output pin 语义按 timing path 拓扑判断，不按 pin 名白名单判断：`net` 前一个实例 pin 为 output pin，`net` 后面的实例 pin 为 input pin。由此保证真实库使用 `OUT/Y/O/SUM/CO` 等输出 pin 名时也不会误把 output pin 当成 input pin。
-- PT `Delta` 只允许出现在 input pin 与 clock/port 等输入侧；output pin 的 `Delta` 必须为空。相关回归由 `tests/test_pt_parser.py` 与 `tests/test_pt_output_pin_no_delta.py` 覆盖。
+- PT `DTrans` 只允许出现在 input pin；output pin/port 必须为空。PT `Delta` 只允许出现在 input pin 与 clock/port 等输入侧；output pin 的 `Delta` 必须为空。相关回归由 `tests/test_pt_parser.py`、`tests/test_pt_output_pin_no_delta.py` 与 `tests/test_pt_report_generation_alignment.py` 覆盖。
+- format2 的 `D-Trans` / `D-Delay` 只允许出现在 input pin；output pin、net、clock、port 与 constraint/summary 行必须为空。相关生成端回归由 `tests/test_format2_report_generation_rules.py` 覆盖。
 - compare 单路径详情页 `paths/path_*.html` 的 Launch/Capture 逐点表新增展示 `Fanout`、`DTrans`、`Delta`、`Voltage` 等 PT 点级字段；某格式或某行无值时保持空白。
 
 ### 推荐命令（不覆盖输出）
